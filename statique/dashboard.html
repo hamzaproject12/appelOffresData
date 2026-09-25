@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Marchés publics — PV</title>
+<script>
+  try { const t = localStorage.getItem('pv-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<style>
+  /* ================================================================ jetons */
+  :root {
+    --fond: #f3f4f6; --surface: #ffffff; --surface-2: #f8f9fb; --surface-3: #eceff3;
+    --bord: #dde1e7; --bord-fort: #b4bcc7;
+    --texte: #111827; --texte-2: #374151; --doux: #555e6c;
+    --accent: #1f4f8f; --accent-survol: #173e72; --accent-doux: #e7eef8; --sur-accent: #ffffff;
+    --vert: #0f6a3e; --vert-doux: #e4f3ea; --vert-bord: #9fd0b4;
+    --orange: #875100; --orange-doux: #fcf0da; --orange-bord: #ebc88a;
+    --rouge: #b3261e; --rouge-doux: #fcebea;
+    --neutre: #4b5563; --neutre-doux: #eceff3;
+    --barre: #9fb5d6; --barre-gagnant: #1d8a53;
+    --s-ok: #2f8f5b; --s-infructueux: #8b95a4; --s-a_verifier: #d4901f; --s-illisible: #d0542c; --s-erreur: #9f1f19; --s-annule: #c3c9d2;
+    --squelette: #e5e8ed; --squelette-reflet: #f3f5f8;
+    --ombre-1: 0 1px 2px rgba(17,24,39,.05);
+    --ombre-3: 0 24px 64px rgba(17,24,39,.24);
+    --voile: rgba(17,24,39,.5);
+    --focus: #2563eb;
+    color-scheme: light;
+
+    --police: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+    --t-xs: .75rem; --t-s: .8125rem; --t-m: .875rem; --t-l: 1rem; --t-xl: 1.25rem; --t-2xl: 1.5rem;
+    --e1: 4px; --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px; --e6: 32px; --e7: 48px;
+    --r-s: 6px; --r-m: 10px; --r-l: 14px;
+    --haut-barre: 64px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fond: #0d1117; --surface: #161b22; --surface-2: #1b2129; --surface-3: #242b35;
+      --bord: #2b333e; --bord-fort: #46505e;
+      --texte: #e8ebef; --texte-2: #c9cfd7; --doux: #9ca6b4;
+      --accent: #7fb2f0; --accent-survol: #a6c9f5; --accent-doux: #1a2a40; --sur-accent: #0b1320;
+      --vert: #5cc98f; --vert-doux: #11281c; --vert-bord: #22553a;
+      --orange: #e8b95c; --orange-doux: #2c220f; --orange-bord: #5c4518;
+      --rouge: #f28b82; --rouge-doux: #34191a;
+      --neutre: #b4bdc9; --neutre-doux: #242b35;
+      --barre: #3d5a82; --barre-gagnant: #43b87c;
+      --s-ok: #43b87c; --s-infructueux: #6f7a89; --s-a_verifier: #e0a23a; --s-illisible: #e5734a; --s-erreur: #f0625a; --s-annule: #444d59;
+      --squelette: #212833; --squelette-reflet: #2a323e;
+      --ombre-1: none; --ombre-3: 0 24px 64px rgba(0,0,0,.6);
+      --voile: rgba(0,0,0,.66);
+      --focus: #7cb0ff;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fond: #0d1117; --surface: #161b22; --surface-2: #1b2129; --surface-3: #242b35;
+    --bord: #2b333e; --bord-fort: #46505e;
+    --texte: #e8ebef; --texte-2: #c9cfd7; --doux: #9ca6b4;
+    --accent: #7fb2f0; --accent-survol: #a6c9f5; --accent-doux: #1a2a40; --sur-accent: #0b1320;
+    --vert: #5cc98f; --vert-doux: #11281c; --vert-bord: #22553a;
+    --orange: #e8b95c; --orange-doux: #2c220f; --orange-bord: #5c4518;
+    --rouge: #f28b82; --rouge-doux: #34191a;
+    --neutre: #b4bdc9; --neutre-doux: #242b35;
+    --barre: #3d5a82; --barre-gagnant: #43b87c;
+    --s-ok: #43b87c; --s-infructueux: #6f7a89; --s-a_verifier: #e0a23a; --s-illisible: #e5734a; --s-erreur: #f0625a; --s-annule: #444d59;
+    --squelette: #212833; --squelette-reflet: #2a323e;
+    --ombre-1: none; --ombre-3: 0 24px 64px rgba(0,0,0,.6);
+    --voile: rgba(0,0,0,.66);
+    --focus: #7cb0ff;
+    color-scheme: dark;
+  }
+
+  /* ================================================================ base */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: calc(var(--haut-barre) + var(--e4)); }
+  html.fiche-ouverte { overflow: hidden; }
+  body { margin: 0; min-height: 100vh; background: var(--fond); color: var(--texte);
+    font: 400 var(--t-m)/1.5 var(--police); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, p { margin: 0; }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  svg.ic { flex-shrink: 0; display: block; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+  .sr { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+    white-space: nowrap; margin: -1px; padding: 0; border: 0; }
+  .doux { color: var(--doux); }
+  .mono { font-family: var(--mono); font-size: .92em; letter-spacing: -.01em; }
+  .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .evitement { position: absolute; left: var(--e2); top: -100px; z-index: 50; background: var(--accent);
+    color: var(--sur-accent); padding: var(--e3) var(--e4); border-radius: var(--r-s); font-weight: 600; }
+  .evitement:focus { top: var(--e2); }
+  .conteneur { width: 100%; max-width: 1440px; margin: 0 auto; padding-inline: var(--e5); }
+
+  /* ================================================================ en-tête */
+  .barre-haut { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--bord); }
+  .barre-haut__ligne { display: flex; align-items: center; gap: var(--e3) var(--e5); min-height: var(--haut-barre); }
+  .marque { display: flex; align-items: center; gap: 10px; color: var(--texte); text-decoration: none;
+    min-height: 44px; flex-shrink: 0; border-radius: var(--r-s); }
+  .marque__logo { width: 34px; height: 34px; border-radius: 9px; background: var(--accent); color: var(--sur-accent);
+    display: grid; place-items: center; }
+  .marque b { display: block; font-size: var(--t-l); font-weight: 650; letter-spacing: -.01em; line-height: 1.2; }
+  .marque small { display: block; font-size: var(--t-xs); color: var(--doux); line-height: 1.3; }
+  .onglets { display: flex; gap: var(--e1); }
+  .onglet { display: inline-flex; align-items: center; gap: var(--e2); min-height: 44px; padding: 0 14px;
+    border-radius: var(--r-s); color: var(--doux); text-decoration: none; font-weight: 500; white-space: nowrap;
+    transition: background-color .15s, color .15s; }
+  .onglet:hover { background: var(--surface-3); color: var(--texte); }
+  .onglet[aria-current="page"] { background: var(--accent-doux); color: var(--accent); font-weight: 600; }
+  .onglet .long { display: none; }
+  .actions { margin-left: auto; display: flex; align-items: center; gap: var(--e1); }
+  .btn-icone { width: 44px; height: 44px; display: inline-grid; place-items: center; border-radius: var(--r-s);
+    border: 1px solid transparent; background: none; color: var(--texte-2); text-decoration: none; }
+  .btn-icone:hover { background: var(--surface-3); color: var(--texte); }
+  .utilisateur { display: flex; align-items: center; gap: var(--e2); color: var(--texte-2); font-size: var(--t-s);
+    padding: 0 var(--e2); min-width: 0; }
+  .utilisateur__nom { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: none; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent-doux); color: var(--accent);
+    display: grid; place-items: center; font-weight: 650; font-size: var(--t-xs); flex-shrink: 0; }
+  .separateur { width: 1px; height: 24px; background: var(--bord); margin: 0 var(--e1); }
+
+  @media (min-width: 1280px) {
+    .onglet .long { display: inline; } .onglet .court { display: none; }
+    .utilisateur__nom { display: inline; }
+  }
+  @media (max-width: 1023px) {
+    :root { --haut-barre: 112px; }
+    .barre-haut__ligne { flex-wrap: wrap; min-height: 0; padding-top: var(--e2); }
+    .onglets { order: 3; flex-basis: 100%; padding-bottom: var(--e2); }
+    .utilisateur__nom { display: inline; }
+  }
+  @media (max-width: 639px) {
+    :root { --haut-barre: 60px; }
+    .conteneur { padding-inline: var(--e4); }
+    .barre-haut__ligne { flex-wrap: nowrap; padding-top: 0; min-height: 60px; }
+    .utilisateur__nom, .marque small { display: none; }
+    .utilisateur { padding: 0 var(--e1); }
+    .separateur { display: none; }
+    .onglets { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface);
+      border-top: 1px solid var(--bord); display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+      padding: var(--e1) var(--e1) calc(var(--e1) + env(safe-area-inset-bottom)); }
+    .onglet { flex-direction: column; justify-content: center; gap: 3px; min-height: 56px; padding: var(--e1) 2px;
+      font-size: 11.5px; line-height: 1.2; text-align: center; white-space: normal; }
+    .onglet[aria-current="page"] { background: none; }
+    .onglet[aria-current="page"] svg { background: var(--accent-doux); border-radius: 999px; padding: 2px 12px;
+      width: 46px; height: 24px; box-sizing: content-box; margin: -2px 0; }
+    body { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  }
+
+  /* ================================================================ contenu */
+  main { padding-block: var(--e6) var(--e7); outline: none; }
+  .tete-vue { margin-bottom: var(--e5); }
+  .tete-vue h1 { font-size: var(--t-2xl); font-weight: 650; letter-spacing: -.02em; line-height: 1.25; outline: none; }
+  .tete-vue p { color: var(--doux); margin-top: var(--e1); max-width: 75ch; }
+  @media (max-width: 639px) {
+    main { padding-top: var(--e5); }
+    .tete-vue { margin-bottom: var(--e4); }
+    .tete-vue h1 { font-size: var(--t-xl); }
+  }
+
+  /* chiffres clés */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--e3); margin-bottom: var(--e5); }
+  .kpi { background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); padding: var(--e4);
+    box-shadow: var(--ombre-1); min-width: 0; }
+  .kpi__lib { font-size: var(--t-s); color: var(--doux); font-weight: 500; }
+  .kpi__val { font-size: var(--t-2xl); font-weight: 650; letter-spacing: -.02em; line-height: 1.2; margin-top: var(--e1);
+    font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .kpi__val small { font-size: var(--t-m); font-weight: 600; color: var(--doux); letter-spacing: 0; }
+  .kpi__note { font-size: var(--t-xs); color: var(--doux); margin-top: 2px; }
+  .kpi .jauge { margin-top: var(--e2); }
+  .kpis--compact .kpi__val { font-size: var(--t-xl); }
+  @media (max-width: 639px) {
+    .kpis { grid-template-columns: 1fr 1fr; gap: var(--e2); margin-bottom: var(--e4); }
+    .kpi { padding: var(--e3); }
+    .kpi__val { font-size: var(--t-xl); }
+    .kpi:last-child:nth-child(odd) { grid-column: span 2; }
+  }
+
+  /* filtres */
+  .filtres { display: flex; flex-wrap: wrap; gap: var(--e2) var(--e3); align-items: flex-end; margin-bottom: var(--e4); }
+  .recherche { position: relative; flex: 1 1 320px; min-width: 0; }
+  .recherche > svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--doux); pointer-events: none; }
+  .champ { height: 44px; width: 100%; border: 1px solid var(--bord-fort); border-radius: var(--r-s);
+    background: var(--surface); color: var(--texte); padding: 0 var(--e3); transition: border-color .15s; }
+  .champ::placeholder { color: var(--doux); opacity: 1; }
+  .champ:hover { border-color: var(--doux); }
+  .champ:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; border-color: var(--focus); border-radius: var(--r-s); }
+  .recherche .champ { padding-left: 42px; }
+  .selecteur { position: relative; display: block; }
+  .selecteur select { appearance: none; -webkit-appearance: none; padding-right: 38px; cursor: pointer; min-width: 190px; }
+  .selecteur svg { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--doux); }
+  .panneau { display: flex; flex-wrap: wrap; gap: var(--e2) var(--e3); align-items: flex-end; }
+  .groupe { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .groupe__lib { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .case { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px;
+    border: 1px solid var(--bord-fort); border-radius: var(--r-s); background: var(--surface); cursor: pointer;
+    user-select: none; white-space: nowrap; }
+  .case input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .case:has(input:checked) { border-color: var(--accent); background: var(--accent-doux); color: var(--accent); font-weight: 500; }
+  .case:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .case input:focus-visible { outline: none; }
+  .bouton-filtres { display: none; }
+  .tri-mobile { display: none; }
+  .compteur { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent);
+    color: var(--sur-accent); font-size: var(--t-xs); font-weight: 700; display: inline-grid; place-items: center; }
+  .puces-actives { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: var(--e2); }
+  .puces-actives:empty { display: none; }
+  .puce-filtre { display: inline-flex; align-items: center; gap: 2px; padding-left: 14px; min-height: 44px; max-width: 100%;
+    border-radius: 999px; background: var(--accent-doux); color: var(--accent); font-size: var(--t-s); font-weight: 500; }
+  .puce-filtre span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .puce-filtre button { width: 44px; height: 44px; flex-shrink: 0; border: 0; background: none; color: inherit;
+    border-radius: 999px; display: grid; place-items: center; }
+  .puce-filtre button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .seul-mobile { display: none; }
+  @media (max-width: 1023px) { .tri-mobile { display: flex; } }
+  @media (max-width: 639px) {
+    .filtres { flex-wrap: wrap; align-items: stretch; }
+    .recherche { flex: 1 1 0; }
+    .champ { font-size: 16px; }
+    .bouton-filtres { display: inline-flex; flex-shrink: 0; }
+    .panneau { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: var(--e4);
+      padding: var(--e4); background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); }
+    .panneau.ouvert { display: flex; }
+    .selecteur select { min-width: 0; }
+    .case { width: 100%; white-space: normal; }
+    .groupe__lib { position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal;
+      margin: 0; font-size: var(--t-s); font-weight: 600; color: var(--texte-2); }
+    .seul-mobile { display: inline-flex; }
+  }
+
+  /* boutons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--e2); min-height: 44px;
+    padding: 0 var(--e4); border-radius: var(--r-s); border: 1px solid var(--bord-fort); background: var(--surface);
+    color: var(--texte); font-weight: 500; text-decoration: none; white-space: nowrap; transition: background-color .15s; }
+  .btn:hover { background: var(--surface-3); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn:disabled:hover { background: var(--surface); }
+  .btn--principal { background: var(--accent); border-color: var(--accent); color: var(--sur-accent); }
+  .btn--principal:hover { background: var(--accent-survol); border-color: var(--accent-survol); }
+
+  /* résultats */
+  .resultats { scroll-margin-top: calc(var(--haut-barre) + var(--e3)); }
+  .resultats__tete { display: flex; justify-content: space-between; align-items: baseline; gap: var(--e3);
+    min-height: 24px; margin-bottom: var(--e2); color: var(--doux); font-size: var(--t-s); }
+  .resultats__tete strong { color: var(--texte); font-weight: 650; }
+  #compte { outline: none; }
+  .cadre { background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); box-shadow: var(--ombre-1);
+    overflow: hidden; transition: opacity .15s; }
+  .cadre.en-cours { opacity: .55; }
+
+  .tableau { width: 100%; border-collapse: collapse; }
+  .tableau th { text-align: left; font-size: var(--t-xs); font-weight: 600; color: var(--doux); text-transform: uppercase;
+    letter-spacing: .04em; background: var(--surface-2); border-bottom: 1px solid var(--bord); padding: 0 var(--e3);
+    height: 44px; white-space: nowrap; }
+  .tableau th.num { text-align: right; }
+  .tri { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit;
+    letter-spacing: inherit; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; }
+  .tri:hover { color: var(--texte); }
+  .tri svg { opacity: .55; }
+  th[aria-sort] .tri { color: var(--accent); }
+  th[aria-sort] .tri svg { opacity: 1; }
+  .tableau td { padding: var(--e3); border-bottom: 1px solid var(--bord); vertical-align: top; overflow-wrap: anywhere; }
+  .tableau tbody tr:last-child td { border-bottom: 0; }
+  .tableau tbody tr[data-fiche] { cursor: pointer; transition: background-color .12s; }
+  .tableau tbody tr[data-fiche]:hover { background: var(--surface-2); }
+  .tableau tbody tr:focus-within { background: var(--accent-doux); }
+  .tableau td.num { white-space: nowrap; }
+  .tableau .col-ref { width: 11rem; }
+  .tableau .col-date { width: 7.5rem; white-space: nowrap; }
+  .lien-fiche { color: var(--texte); font-weight: 600; text-decoration: none; }
+  .lien-fiche:hover { color: var(--accent); text-decoration: underline; }
+  .fort { font-weight: 500; color: var(--texte); }
+  .sous { color: var(--doux); font-size: var(--t-s); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden; }
+  .taux { display: inline-flex; align-items: center; gap: var(--e2); justify-content: flex-end; }
+  .taux .jauge { width: 64px; height: 6px; }
+  @media (max-width: 1023px) { .col-large { display: none; } }
+
+  .cartes { display: none; list-style: none; margin: 0; padding: 0; }
+  .carte-ligne { display: block; background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m);
+    padding: var(--e3) var(--e4); color: var(--texte); text-decoration: none; box-shadow: var(--ombre-1);
+    transition: background-color .12s, border-color .12s; }
+  .carte-ligne:hover { border-color: var(--bord-fort); }
+  .carte-ligne:active { background: var(--surface-2); }
+  .carte-ligne:focus-visible { outline-offset: 1px; border-radius: var(--r-m); }
+  .carte-ligne__haut { display: flex; justify-content: space-between; align-items: center; gap: var(--e2);
+    font-size: var(--t-xs); color: var(--doux); min-width: 0; }
+  .carte-ligne__haut > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .carte-ligne__titre { font-weight: 600; margin-top: var(--e1); line-height: 1.4; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .carte-ligne__bas { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--e3);
+    margin-top: var(--e3); padding-top: var(--e3); border-top: 1px solid var(--bord); }
+  .carte-ligne__bas > :first-child { min-width: 0; overflow-wrap: anywhere; }
+  .etiq { display: block; font-size: var(--t-xs); color: var(--doux); }
+  .carte-ligne__montant { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+  .carte-ligne__montant small { font-weight: 500; color: var(--doux); }
+  .carte-ligne__stats { display: flex; flex-wrap: wrap; gap: var(--e1) var(--e3); font-size: var(--t-s); color: var(--doux); margin-top: var(--e1); }
+  .carte-ligne__stats b { color: var(--texte); font-weight: 600; }
+
+  @media (max-width: 639px) {
+    .tableau { display: none; }
+    .cartes { display: grid; gap: var(--e2); }
+    .cadre { background: none; border: 0; box-shadow: none; overflow: visible; border-radius: 0; }
+    .cadre > .etat { background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); }
+  }
+
+  /* pagination */
+  .pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--e3);
+    padding: var(--e3) var(--e4); border-top: 1px solid var(--bord); background: var(--surface-2); }
+  .pagination__info { color: var(--doux); font-size: var(--t-s); text-align: center; font-variant-numeric: tabular-nums; }
+  @media (max-width: 639px) {
+    .pagination { background: none; border: 0; padding: var(--e4) 0 0; }
+    .pagination .btn { padding: 0 var(--e3); }
+  }
+  @media (max-width: 379px) { .pagination .btn__texte { display: none; } .pagination .btn { width: 44px; padding: 0; } }
+
+  /* pastilles de statut */
+  .puce { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: var(--t-xs);
+    font-weight: 600; white-space: nowrap; background: var(--neutre-doux); color: var(--neutre); line-height: 1.5; }
+  .puce--ok { background: var(--vert-doux); color: var(--vert); }
+  .puce--attention { background: var(--orange-doux); color: var(--orange); }
+  .puce--ko { background: var(--rouge-doux); color: var(--rouge); }
+
+  /* jauges */
+  .jauge { display: block; height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+  .jauge i { display: block; height: 100%; width: var(--l, 0%); min-width: 3px; background: var(--barre); border-radius: inherit; }
+
+  /* états */
+  .etat { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--e2);
+    padding: var(--e7) var(--e5); color: var(--doux); }
+  .etat__icone { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--surface-3); color: var(--texte-2); margin-bottom: var(--e1); }
+  .etat--erreur .etat__icone { background: var(--rouge-doux); color: var(--rouge); }
+  .etat h2 { font-size: var(--t-l); color: var(--texte); font-weight: 650; }
+  .etat p { max-width: 50ch; }
+  .etat .btn { margin-top: var(--e3); }
+  .etat--compact { padding: var(--e5); }
+
+  /* squelettes */
+  .sq { display: block; height: 12px; max-width: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, var(--squelette) 25%, var(--squelette-reflet) 37%, var(--squelette) 63%);
+    background-size: 400% 100%; animation: reflet 1.4s ease infinite; }
+  .sq + .sq { margin-top: 8px; }
+  .sq--fin { height: 10px; }
+  .sq--gros { height: 26px; }
+  .num .sq { margin-left: auto; }
+  @keyframes reflet { from { background-position: 100% 50%; } to { background-position: 0 50%; } }
+
+  /* répartition (qualité) */
+  .repartition { background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); padding: var(--e5);
+    box-shadow: var(--ombre-1); margin-bottom: var(--e5); }
+  .repartition h2 { font-size: var(--t-l); font-weight: 650; margin-bottom: var(--e4); }
+  .repartition__barre { display: flex; gap: 2px; height: 14px; border-radius: 999px; overflow: hidden; }
+  .repartition__barre i { background: var(--c); min-width: 4px; }
+  .legende { list-style: none; margin: var(--e5) 0 0; padding: 0; display: grid; gap: var(--e4);
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .legende li { display: flex; gap: 10px; align-items: flex-start; }
+  .pastille { width: 12px; height: 12px; border-radius: 3px; background: var(--c); margin-top: 5px; flex-shrink: 0; }
+  .legende b { font-size: var(--t-xl); font-weight: 650; font-variant-numeric: tabular-nums; }
+  .legende__pct { color: var(--doux); font-size: var(--t-s); margin-left: 4px; }
+  @media (max-width: 639px) {
+    .repartition { padding: var(--e4); margin-bottom: var(--e4); }
+    .legende { grid-template-columns: 1fr 1fr; gap: var(--e3); }
+    .legende b { font-size: var(--t-l); }
+  }
+
+  /* annonces */
+  .annonces { position: fixed; left: 50%; transform: translateX(-50%); bottom: var(--e5); z-index: 100;
+    display: grid; gap: var(--e2); width: min(480px, calc(100vw - 32px)); pointer-events: none; }
+  .annonce { pointer-events: auto; background: var(--texte); color: var(--fond); padding: var(--e3) var(--e4);
+    border-radius: var(--r-m); box-shadow: var(--ombre-3); display: flex; gap: 10px; align-items: flex-start; font-weight: 500;
+    animation: monte .2s ease-out; }
+  @keyframes monte { from { opacity: 0; transform: translateY(8px); } }
+  @media (max-width: 639px) { .annonces { bottom: calc(80px + env(safe-area-inset-bottom)); } }
+
+  /* ================================================================ fiche */
+  dialog.fiche { border: 0; padding: 0; margin: auto; width: min(1040px, calc(100vw - 48px));
+    max-width: none; max-height: calc(100dvh - 48px); border-radius: var(--r-l); background: var(--fond);
+    color: var(--texte); box-shadow: var(--ombre-3); overflow: hidden; }
+  dialog.fiche[open] { display: flex; flex-direction: column; animation: apparait .18s ease-out; }
+  dialog.fiche::backdrop { background: var(--voile); }
+  @keyframes apparait { from { opacity: 0; } }
+  .fiche__barre { display: flex; align-items: center; gap: var(--e2); min-height: 60px; flex-shrink: 0;
+    padding: var(--e2) var(--e3) var(--e2) var(--e5); background: var(--surface); border-bottom: 1px solid var(--bord); }
+  .fiche__barre .btn-icone[hidden] { display: none; }
+  .fiche__type { flex: 1; min-width: 0; font-size: var(--t-xs); font-weight: 700; color: var(--doux);
+    text-transform: uppercase; letter-spacing: .07em; }
+  .fiche__corps { overflow-y: auto; overscroll-behavior: contain; padding: var(--e5); flex: 1 1 auto; outline: none; }
+  @media (max-width: 639px) {
+    dialog.fiche { width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+    .fiche__barre { padding: calc(var(--e1) + env(safe-area-inset-top)) var(--e2) var(--e1) var(--e4); }
+    .fiche__corps { padding: var(--e4) var(--e4) calc(var(--e6) + env(safe-area-inset-bottom)); }
+  }
+
+  .fiche-tete { margin-bottom: var(--e5); }
+  .fiche-tete__meta { display: flex; flex-wrap: wrap; gap: var(--e2); align-items: center; color: var(--doux);
+    font-size: var(--t-s); margin-bottom: var(--e2); }
+  .fiche-tete h2 { font-size: var(--t-xl); line-height: 1.35; font-weight: 650; letter-spacing: -.01em;
+    overflow-wrap: anywhere; outline: none; }
+  .fiche-tete__sous { margin-top: var(--e2); color: var(--texte-2); display: flex; flex-wrap: wrap; gap: var(--e2); align-items: center; }
+  .lien { color: var(--accent); font-weight: 500; text-decoration: none; }
+  .lien:hover { text-decoration: underline; }
+  .lien-discret { color: inherit; text-decoration: none; }
+  .lien-discret:hover { color: var(--accent); text-decoration: underline; }
+  .fiche-actions { display: flex; flex-wrap: wrap; gap: var(--e2); margin: calc(-1 * var(--e2)) 0 var(--e5); }
+
+  .gagnant { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--e3) var(--e5); align-items: center;
+    background: var(--surface); border: 1px solid var(--vert-bord); border-left: 4px solid var(--barre-gagnant);
+    border-radius: var(--r-m); padding: var(--e4) var(--e5); margin-bottom: var(--e4); }
+  .gagnant__lib { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .07em; color: var(--vert);
+    font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .gagnant__nom { font-size: var(--t-l); font-weight: 650; margin-top: var(--e1); overflow-wrap: anywhere; }
+  .gagnant__montant { text-align: right; }
+  .gagnant__montant b { display: block; font-size: var(--t-xl); font-weight: 700; font-variant-numeric: tabular-nums; margin-top: var(--e1); }
+  .gagnant__montant b small { font-size: var(--t-m); font-weight: 600; color: var(--doux); }
+  .gagnant--vide { border-color: var(--bord); border-left-color: var(--bord-fort); }
+  .gagnant--vide .gagnant__lib { color: var(--doux); }
+  @media (max-width: 639px) {
+    .gagnant { grid-template-columns: 1fr; padding: var(--e4); }
+    .gagnant__montant { text-align: left; }
+  }
+
+  .faits { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); margin: 0 0 var(--e5);
+    background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); overflow: hidden; }
+  .fait { padding: var(--e3) var(--e4); border-top: 1px solid var(--bord); margin-top: -1px; min-width: 0; }
+  .fait dt { font-size: var(--t-xs); color: var(--doux); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  .fait dd { margin: 2px 0 0; font-weight: 500; overflow-wrap: anywhere; }
+  .fait dd a { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; }
+
+  .alerte { display: flex; gap: var(--e3); align-items: flex-start; background: var(--orange-doux); color: var(--texte);
+    border: 1px solid var(--orange-bord); border-radius: var(--r-m); padding: var(--e3) var(--e4); margin-bottom: var(--e5); }
+  .alerte svg { color: var(--orange); margin-top: 1px; }
+  .alerte b { display: block; color: var(--orange); }
+
+  .section { margin-bottom: var(--e5); }
+  .section__tete { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
+    gap: var(--e1) var(--e3); margin-bottom: var(--e3); }
+  .section__tete h3 { font-size: var(--t-l); font-weight: 650; }
+  .section__tete p { color: var(--doux); font-size: var(--t-s); }
+  .section__pied { color: var(--doux); font-size: var(--t-xs); margin-top: var(--e2); }
+  @media (max-width: 639px) {
+    .cadre--fixe { background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); overflow: hidden; }
+  }
+
+  /* comparaison des offres */
+  .offres-cadre { container-type: inline-size; }
+  .offres { list-style: none; margin: 0; padding: 0; }
+  .offres__entete, .offre { display: grid; gap: var(--e2) var(--e4); align-items: center; padding: var(--e3) var(--e5);
+    grid-template-columns: minmax(0, 1fr) 170px minmax(120px, 220px) 130px 76px; }
+  .offres__entete { font-size: var(--t-xs); text-transform: uppercase; color: var(--doux); font-weight: 600;
+    letter-spacing: .04em; background: var(--surface-2); border-bottom: 1px solid var(--bord); padding-block: var(--e2); }
+  .offre { border-bottom: 1px solid var(--bord); }
+  .offre:last-child { border-bottom: 0; }
+  .offre__nom { display: flex; gap: 6px; align-items: flex-start; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+  .offre__nom svg { color: var(--vert); margin-top: 1px; }
+  .offre__statut .puce { white-space: normal; }
+  .offre__montant { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .offre__montant small { display: block; font-weight: 400; color: var(--doux); font-size: var(--t-xs); }
+  .offre__ecart { text-align: right; font-size: var(--t-s); color: var(--doux); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .offre__barre .doux { font-size: var(--t-xs); }
+  .offre.est-gagnant { background: var(--vert-doux); box-shadow: inset 4px 0 0 var(--barre-gagnant); }
+  .offre.est-gagnant .offre__nom { font-weight: 700; }
+  .offre.est-gagnant .jauge i { background: var(--barre-gagnant); }
+  .offre.est-gagnant .offre__ecart { color: var(--vert); font-weight: 600; }
+  .offre.est-ecarte .jauge i { background: repeating-linear-gradient(135deg, var(--barre) 0 4px, transparent 4px 7px);
+    box-shadow: inset 0 0 0 1px var(--barre); }
+  .offre.est-ecarte .offre__nom { color: var(--texte-2); }
+  @container (max-width: 700px) {
+    .offres__entete { display: none; }
+    .offre { grid-template-columns: minmax(0, 1fr) auto; padding: var(--e3) var(--e4);
+      grid-template-areas: "nom montant" "statut ecart" "barre barre"; }
+    .offre__nom { grid-area: nom; } .offre__montant { grid-area: montant; } .offre__statut { grid-area: statut; }
+    .offre__ecart { grid-area: ecart; } .offre__barre { grid-area: barre; }
+  }
+
+  .classement { list-style: none; margin: 0; padding: var(--e4) var(--e5); display: grid; gap: var(--e3);
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: var(--e6); }
+  .classement li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px var(--e3); align-items: baseline; }
+  .classement li > span:first-child { overflow-wrap: anywhere; font-weight: 500; }
+  .classement .jauge { grid-column: 1 / -1; height: 6px; }
+  .classement b { font-variant-numeric: tabular-nums; }
+  @media (max-width: 639px) { .classement { padding: var(--e4); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important; scroll-behavior: auto !important; }
+    .sq { background: var(--squelette); }
+  }
+</style>
+</head>
+<body>
+<a class="evitement" href="#contenu">Aller au contenu</a>
+<header class="barre-haut">
+  <div class="conteneur barre-haut__ligne">
+    <a class="marque" href="#/marches" data-vue="marches">
+      <span class="marque__logo" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 7h12M6 12h8M6 17h5"/><circle cx="17.5" cy="16.5" r="2.5"/></svg>
+      </span>
+      <span><b>Marchés publics</b><small>Extraits de PV · <span id="entete">…</span></small></span>
+    </a>
+    <nav class="onglets" aria-label="Sections">
+      <a class="onglet" href="#/marches" data-vue="marches"><i data-ic="marches"></i><span>Marchés</span></a>
+      <a class="onglet" href="#/societes" data-vue="societes"><i data-ic="societes"></i><span>Sociétés</span></a>
+      <a class="onglet" href="#/acheteurs" data-vue="acheteurs"><i data-ic="acheteurs"></i><span>Maîtres d’ouvrage</span></a>
+      <a class="onglet" href="#/qualite" data-vue="qualite"><i data-ic="qualite"></i><span class="long">Qualité de l’extraction</span><span class="court">Qualité</span></a>
+    </nav>
+    <div class="actions">
+      <button type="button" class="btn-icone" id="bouton-theme"></button>
+      <span class="separateur" aria-hidden="true"></span>
+      <span class="utilisateur"><span class="avatar" id="avatar" aria-hidden="true"></span><span class="sr">Connecté en tant que </span><span class="utilisateur__nom" id="qui"></span></span>
+      <a class="btn-icone" href="/deconnexion" aria-label="Se déconnecter" title="Se déconnecter"><i data-ic="sortie"></i></a>
+    </div>
+  </div>
+</header>
+
+<main id="contenu" class="conteneur" tabindex="-1"></main>
+
+<dialog class="fiche" id="fiche" aria-labelledby="fiche-titre">
+  <div class="fiche__barre">
+    <button type="button" class="btn-icone" id="fiche-retour" aria-label="Revenir à la fiche précédente" title="Revenir à la fiche précédente" hidden><i data-ic="retour"></i></button>
+    <span class="fiche__type" id="fiche-type"></span>
+    <button type="button" class="btn-icone" id="fiche-fermer" aria-label="Fermer la fiche" title="Fermer (Échap)"><i data-ic="fermer"></i></button>
+  </div>
+  <div class="fiche__corps" id="fiche-corps" tabindex="-1"></div>
+</dialog>
+
+<div class="annonces" id="annonces" role="status" aria-live="polite"></div>
+<noscript><p style="padding:24px">Ce tableau de bord nécessite JavaScript.</p></noscript>
+
+<script>
+'use strict';
+// ================================================================ outils
+const $ = (s, r = document) => r.querySelector(s);
+const main = $('#contenu'), dlg = $('#fiche'), ficheCorps = $('#fiche-corps');
+const TAILLE = 50;                                    // lignes par page, imposé par le serveur (max 100)
+const mouvementReduit = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const nfEntier = new Intl.NumberFormat('fr-FR');
+const nfDh = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const nb = v => v == null || isNaN(v) ? '—' : nfEntier.format(v);
+const dh = v => v == null ? '' : nfDh.format(+v);
+const dec = (v, d) => (+v).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const dhCourt = v => { v = +v || 0; return v >= 1e9 ? dec(v / 1e9, 2) + ' Md' : v >= 1e6 ? dec(v / 1e6, 1) + ' M' : nfEntier.format(Math.round(v)); };
+const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const initiales = n => (n || '').split(/\s+/).filter(Boolean).slice(0, 2).map(m => m[0].toUpperCase()).join('') || '?';
+
+const LIBELLE_STATUT = { ok: 'OK', infructueux: 'Infructueux', a_verifier: 'À vérifier', illisible: 'Illisible',
+  erreur: 'Erreur', annule: 'Annulé' };
+const PUCE_STATUT = { ok: 'puce--ok', infructueux: '', a_verifier: 'puce--attention', illisible: 'puce--ko', erreur: 'puce--ko', annule: '' };
+const LIBELLE_CONC = { attributaire: 'Attributaire', admis: 'Admis', depose: 'A déposé',
+  ecarte_dossier_administratif_technique: 'Écarté (dossier admin./technique)',
+  ecarte_offre_technique: 'Écarté (offre technique)', ecarte_offre_financiere: 'Écarté (offre financière)' };
+const puceStatut = s => `<span class="puce ${PUCE_STATUT[s] ?? ''}">${esc(LIBELLE_STATUT[s] || s || '—')}</span>`;
+const puceConc = s => `<span class="puce ${s === 'attributaire' ? 'puce--ok' : (s || '').startsWith('ecarte') ? 'puce--ko' : ''}">${
+  s === 'attributaire' ? ic('check', 12) : ''}${esc(LIBELLE_CONC[s] || s || '—')}</span>`;
+const tiret = '<span class="doux">—</span>';
+
+// ================================================================ icônes (SVG écrits à la main)
+const ICONES = {
+  recherche: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  filtre: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  soleil: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  lune: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  sortie: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  fermer: '<path d="M6 6l12 12M18 6 6 18"/>',
+  retour: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+  gauche: '<path d="m15 18-6-6 6-6"/>',
+  droite: '<path d="m9 18 6-6-6-6"/>',
+  bas: '<path d="m6 9 6 6 6-6"/>',
+  flecheBas: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+  flecheHaut: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+  triable: '<path d="m8 9 4-4 4 4M16 15l-4 4-4-4"/>',
+  coupe: '<circle cx="12" cy="9" r="6"/><path d="m8.5 14-1.5 8 5-3 5 3-1.5-8"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  alerte: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+  externe: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>',
+  rafraichir: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8M21 3v5h-5"/>',
+  marches: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
+  societes: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3"/>',
+  acheteurs: '<path d="M3 21h18M5 21V11M9.5 21V11M14.5 21V11M19 21V11M2 11l10-7 10 7z"/>',
+  qualite: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+  vide: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
+  horsligne: '<path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8M19 13a10 10 0 0 0-2.3-1.6M2 8.8a15 15 0 0 1 4.2-2.7M22 8.8A15 15 0 0 0 11 5M12 20h.01"/>',
+  liste: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+};
+const ic = (nom, t = 20) => `<svg class="ic" width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONES[nom] || ''}</svg>`;
+document.querySelectorAll('i[data-ic]').forEach(el => { el.outerHTML = ic(el.dataset.ic, 20); });
+
+// ================================================================ annonces
+const zoneAnnonces = $('#annonces');
+function annoncer(message) {
+  const parent = dlg.open ? dlg : document.body;                 // au-dessus de la fiche modale si elle est ouverte
+  if (zoneAnnonces.parentNode !== parent) parent.appendChild(zoneAnnonces);
+  if ([...zoneAnnonces.children].some(n => n.dataset.m === message)) return;
+  const el = document.createElement('div');
+  el.className = 'annonce'; el.dataset.m = message;
+  el.innerHTML = `${ic('alerte', 18)}<span>${esc(message)}</span>`;
+  zoneAnnonces.appendChild(el);
+  setTimeout(() => el.remove(), 7000);
+}
+
+// ================================================================ API
+class ErreurApi extends Error { constructor(type, statut) { super(type); this.type = type; this.statut = statut; } }
+async function api(chemin, params = {}) {
+  const url = new URL(chemin, location.origin);
+  Object.entries(params).forEach(([k, v]) => { if (v !== '' && v != null) url.searchParams.set(k, v); });
+  let r;
+  try { r = await fetch(url, { credentials: 'same-origin' }); }
+  catch (e) { throw new ErreurApi('reseau'); }
+  if (r.status === 401) { location.href = '/'; throw new ErreurApi('session', 401); }
+  if (r.status === 429) { annoncer("Trop de requêtes d'affilée. Patientez une minute avant de réessayer."); throw new ErreurApi('limite', 429); }
+  if (r.status === 404) throw new ErreurApi('introuvable', 404);
+  if (!r.ok) throw new ErreurApi('serveur', r.status);
+  try { return await r.json(); } catch (e) { throw new ErreurApi('serveur', r.status); }
+}
+const MESSAGES = {
+  reseau: ['Connexion impossible', 'Le serveur ne répond pas. Vérifiez votre connexion, puis réessayez.'],
+  limite: ['Trop de requêtes', "Vous avez effectué beaucoup de requêtes d'affilée. Patientez une minute, puis réessayez."],
+  introuvable: ['Fiche introuvable', "Cet élément n'existe pas ou n'est plus disponible."],
+  serveur: ['Erreur du serveur', 'Le serveur a rencontré un problème. Réessayez dans un instant.'],
+};
+function blocErreur(e, compact = false) {
+  const [titre, texte] = MESSAGES[e.type] || MESSAGES.serveur;
+  return `<div class="etat etat--erreur ${compact ? 'etat--compact' : ''}" role="alert">
+    <span class="etat__icone">${ic(e.type === 'reseau' ? 'horsligne' : 'alerte', 24)}</span>
+    <h2>${titre}</h2><p>${texte}${e.statut && e.type === 'serveur' ? ` (code ${e.statut})` : ''}</p>
+    <button type="button" class="btn btn--principal" data-action="reessayer">${ic('rafraichir', 18)}Réessayer</button></div>`;
+}
+
+// ================================================================ vues
+let STATS = null, ERREUR_STATS = null, QUALITE = null;
+
+const VUES = {
+  marches: {
+    titre: 'Marchés', api: '/api/marches', fixe: {}, triDefaut: 'date',
+    filtres: ['q', 'statut', 'attributaire', 'acheteur'],
+    unite: ['marché', 'marchés'], vide: 'Aucun marché ne correspond à ces critères.',
+    placeholder: 'Acheteur, objet, société, référence…',
+    intro: "Résultats d'appels d'offres publics : attributaires, montants et offres des concurrents, extraits des procès-verbaux d'ouverture des plis.",
+    kpis: S => [
+      ['Marchés', nb(S.marches), 'extraits de PV'],
+      ['Avec attributaire', nb(S.avec_attributaire), `${pct(S.avec_attributaire, S.marches)} % des marchés`],
+      ['Infructueux', nb(S.infructueux), `${pct(S.infructueux, S.marches)} % des marchés`],
+      ['Montant attribué cumulé', `${dhCourt(S.montant)} <small>DH</small>`, ''],
+      ['Offres analysées', nb(S.concurrents), 'lignes de concurrents'],
+    ],
+    id: m => 'm:' + m.ref,
+    colonnes: [
+      { titre: 'Référence', tri: 'reference', genre: 'texte', cls: 'col-ref',
+        rendu: (m, lien) => lien(`<span class="mono">${esc(m.reference || m.ref)}</span>`) },
+      { titre: "Maître d'ouvrage", tri: 'acheteur', genre: 'texte', deux: true,
+        rendu: m => `<div class="fort">${esc(m.acheteur || m.maitre_ouvrage || '')}</div><div class="sous">${esc(m.objet || '')}</div>` },
+      { titre: 'Attributaire', tri: 'attributaire', genre: 'texte',
+        rendu: m => m.attributaire ? esc(m.attributaire) : `<span class="doux">${m.infructueux ? 'Infructueux' : '—'}</span>` },
+      { titre: 'Montant (DH)', tri: 'montant', num: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
+      { titre: 'Conc.', titreLong: 'Nombre de concurrents', tri: 'concurrents', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
+      { titre: 'Ouverture', titreLong: "Date d'ouverture", tri: 'date', genre: 'date', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
+      { titre: 'Extraction', large: true, rendu: m => puceStatut(m.statut) },
+    ],
+    carte: m => `
+      <div class="carte-ligne__haut"><span class="mono">${esc(m.reference || m.ref)}</span>
+        <span>${m.statut !== 'ok' ? puceStatut(m.statut) + ' ' : ''}${esc(m.date_ouverture || '')}</span></div>
+      <div class="carte-ligne__titre">${esc(m.acheteur || m.maitre_ouvrage || '')}</div>
+      <div class="sous">${esc(m.objet || '')}</div>
+      <div class="carte-ligne__bas">
+        <div><span class="etiq">Attributaire</span>${m.attributaire ? esc(m.attributaire) : `<span class="doux">${m.infructueux ? 'Infructueux' : 'Non identifié'}</span>`}</div>
+        <div class="carte-ligne__montant">${m.montant != null ? `${dh(m.montant)} <small>DH</small>` : tiret}
+          <span class="etiq">${nb(m.nb_concurrents)} concurrent${m.nb_concurrents > 1 ? 's' : ''}</span></div>
+      </div>`,
+  },
+
+  societes: {
+    titre: 'Sociétés', api: '/api/societes', fixe: {}, triDefaut: 'participations',
+    filtres: ['q'], unite: ['société', 'sociétés'], vide: 'Aucune société ne correspond à cette recherche.',
+    placeholder: 'Nom de société…',
+    intro: 'Les sociétés soumissionnaires : participations, marchés remportés et montants gagnés.',
+    kpis: S => [
+      ['Sociétés distinctes', nb(S.societes), ''],
+      ['Offres analysées', nb(S.concurrents), 'lignes de concurrents'],
+      ['Marchés attribués', nb(S.avec_attributaire), `${pct(S.avec_attributaire, S.marches)} % des marchés`],
+    ],
+    id: s => 's:' + s.cle,
+    colonnes: [
+      { titre: 'Société', tri: 'nom', genre: 'texte', rendu: (s, lien) => lien(esc(s.nom)) },
+      { titre: 'Participations', tri: 'participations', num: true, rendu: s => nb(s.participations) },
+      { titre: 'Gagnés', titreLong: 'Marchés gagnés', tri: 'gagnes', num: true, rendu: s => nb(s.gagnes) },
+      { titre: 'Taux de réussite', num: true, rendu: s => { const t = pct(s.gagnes, s.participations);
+        return `<span class="taux">${t} %<span class="jauge" aria-hidden="true"><i style="--l:${t}%"></i></span></span>`; } },
+      { titre: 'Montant gagné (DH)', tri: 'montant', num: true, rendu: s => s.montant ? dh(s.montant) : tiret },
+      { titre: "Maîtres d'ouvrage", tri: 'acheteurs', num: true, large: true, rendu: s => nb(s.acheteurs) },
+    ],
+    carte: s => { const t = pct(s.gagnes, s.participations); return `
+      <div class="carte-ligne__titre">${esc(s.nom)}</div>
+      <div class="carte-ligne__stats"><span><b>${nb(s.participations)}</b> participations</span>
+        <span><b>${nb(s.gagnes)}</b> gagnés</span><span><b>${nb(s.acheteurs)}</b> maîtres d'ouvrage</span></div>
+      <div class="carte-ligne__bas">
+        <div style="flex:1"><span class="etiq">Taux de réussite · ${t} %</span><span class="jauge" style="height:6px;margin-top:6px;max-width:160px"><i style="--l:${t}%"></i></span></div>
+        <div class="carte-ligne__montant"><span class="etiq">Montant gagné</span>${s.montant ? `${dh(s.montant)} <small>DH</small>` : tiret}</div>
+      </div>`; },
+  },
+
+  acheteurs: {
+    titre: "Maîtres d'ouvrage", api: '/api/acheteurs', fixe: {}, triDefaut: 'marches',
+    filtres: ['q'], unite: ["maître d'ouvrage", "maîtres d'ouvrage"], vide: "Aucun maître d'ouvrage ne correspond à cette recherche.",
+    placeholder: "Nom du maître d'ouvrage…",
+    intro: 'Les administrations et établissements acheteurs : volume de marchés, montants attribués et niveau de concurrence.',
+    kpis: S => [
+      ["Maîtres d'ouvrage", nb(S.acheteurs), ''],
+      ['Marchés', nb(S.marches), 'extraits de PV'],
+      ['Montant attribué cumulé', `${dhCourt(S.montant)} <small>DH</small>`, ''],
+    ],
+    id: a => 'a:' + a.nom,
+    colonnes: [
+      { titre: "Maître d'ouvrage", tri: 'nom', genre: 'texte', rendu: (a, lien) => lien(esc(a.nom)) },
+      { titre: 'Marchés', tri: 'marches', num: true, rendu: a => nb(a.marches) },
+      { titre: 'Attribués', tri: 'attribues', num: true, rendu: a => nb(a.attribues) },
+      { titre: 'Infructueux', tri: 'infructueux', num: true, large: true, rendu: a => nb(a.infructueux) },
+      { titre: 'Montant attribué (DH)', tri: 'montant', num: true, rendu: a => a.montant ? dh(a.montant) : tiret },
+      { titre: 'Conc. / marché', titreLong: 'Concurrents par marché', num: true, large: true,
+        rendu: a => dec(a.concurrents / Math.max(1, a.marches), 1) },
+    ],
+    carte: a => `
+      <div class="carte-ligne__titre">${esc(a.nom)}</div>
+      <div class="carte-ligne__stats"><span><b>${nb(a.marches)}</b> marchés</span><span><b>${nb(a.attribues)}</b> attribués</span>
+        <span><b>${nb(a.infructueux)}</b> infructueux</span></div>
+      <div class="carte-ligne__bas">
+        <div><span class="etiq">Concurrents / marché</span>${dec(a.concurrents / Math.max(1, a.marches), 1)}</div>
+        <div class="carte-ligne__montant"><span class="etiq">Montant attribué</span>${a.montant ? `${dh(a.montant)} <small>DH</small>` : tiret}</div>
+      </div>`,
+  },
+
+  qualite: {
+    titre: "Qualité de l'extraction", api: '/api/marches', fixe: { statut: 'a_verifier' }, triDefaut: 'date',
+    filtres: ['q'], unite: ['PV à vérifier', 'PV à vérifier'], vide: 'Aucun PV à vérifier ne correspond à cette recherche.',
+    placeholder: 'Filtrer les PV à vérifier…',
+    intro: "« À vérifier » signale un PV où au moins une information demande confirmation : le lien vers le PV d'origine est disponible sur chaque fiche.",
+    id: m => 'm:' + m.ref,
+    colonnes: [
+      { titre: 'Référence', tri: 'reference', genre: 'texte', cls: 'col-ref',
+        rendu: (m, lien) => lien(`<span class="mono">${esc(m.reference || m.ref)}</span>`) },
+      { titre: "Maître d'ouvrage", tri: 'acheteur', genre: 'texte', deux: true,
+        rendu: m => `<div class="fort">${esc(m.acheteur || '')}</div><div class="sous">${esc(m.objet || '')}</div>` },
+      { titre: 'Ouverture', tri: 'date', genre: 'date', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
+      { titre: 'Statut', rendu: m => puceStatut(m.statut) },
+    ],
+    carte: m => `
+      <div class="carte-ligne__haut"><span class="mono">${esc(m.reference || m.ref)}</span><span>${esc(m.date_ouverture || '')}</span></div>
+      <div class="carte-ligne__titre">${esc(m.acheteur || '')}</div>
+      <div class="sous">${esc(m.objet || '')}</div>
+      <div class="carte-ligne__bas"><div>${puceStatut(m.statut)}</div>
+        <div class="carte-ligne__montant">${m.montant != null ? `${dh(m.montant)} <small>DH</small>` : ''}</div></div>`,
+  },
+};
+const LIB_SENS = { texte: ['Z → A', 'A → Z'], date: ['plus récent d’abord', 'plus ancien d’abord'], num: ['décroissant', 'croissant'] };
+
+// ================================================================ état et URL
+// Forme : #/marches?q=eau&statut=ok&tri=montant&sens=asc&page=2&fiche=m:1000003
+let ETAT = { vue: 'marches', p: {}, fiche: null };
+const memoire = {};                 // derniers filtres de chaque onglet
+let profondeur = 0;                 // nombre de fiches empilées dans l'historique
+
+function normaliser(vue, brut) {
+  const v = VUES[vue], out = {};
+  for (const k of v.filtres) {
+    let x = (brut[k] ?? '').toString().trim();
+    if (k === 'statut' && !Object.hasOwn(LIBELLE_STATUT, x)) x = '';
+    if (k === 'attributaire' && x !== '1') x = '';
+    if (x) out[k] = x.slice(0, 200);
+  }
+  if (v.colonnes.some(c => c.tri && c.tri === brut.tri) && brut.tri !== v.triDefaut) out.tri = brut.tri;
+  if (brut.sens === 'asc') out.sens = 'asc';
+  const page = parseInt(brut.page, 10);
+  if (page > 1) out.page = String(Math.min(page, 100000));
+  return out;
+}
+function lireURL() {
+  const h = location.hash.replace(/^#\/?/, '');
+  const i = h.indexOf('?');
+  const chemin = i < 0 ? h : h.slice(0, i);
+  const sp = new URLSearchParams(i < 0 ? '' : h.slice(i + 1));
+  const vue = Object.hasOwn(VUES, chemin) ? chemin : 'marches';
+  return { vue, p: normaliser(vue, Object.fromEntries(sp)), fiche: sp.get('fiche') || null };
+}
+function construireHash(vue, p, fiche) {
+  const sp = new URLSearchParams(p);
+  if (fiche) sp.set('fiche', fiche);
+  const qs = sp.toString();
+  return '#/' + vue + (qs ? '?' + qs : '');
+}
+function ecrireURL(mode) {
+  history[mode === 'push' ? 'pushState' : 'replaceState']({ p: profondeur }, '', construireHash(ETAT.vue, ETAT.p, ETAT.fiche));
+}
+function params() {
+  const v = VUES[ETAT.vue], base = { tri: v.triDefaut, sens: 'desc' };
+  v.filtres.forEach(k => { base[k] = ''; });
+  return { ...base, ...ETAT.p, page: +(ETAT.p.page || 1) };
+}
+function majParams(maj, mode = 'replace') {
+  ETAT.p = normaliser(ETAT.vue, { ...ETAT.p, ...maj });
+  memoire[ETAT.vue] = ETAT.p;
+  ecrireURL(mode);
+  synchroniserChamps();
+}
+const lienFiche = id => construireHash(ETAT.vue, ETAT.p, id);
+const aFiche = (id, contenu, cls = 'lien') => `<a class="${cls}" href="${esc(lienFiche(id))}" data-fiche="${esc(id)}">${contenu}</a>`;
+
+// ================================================================ thème
+const btnTheme = $('#bouton-theme');
+const themeActuel = () => document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+function majBoutonTheme() {
+  const sombre = themeActuel() === 'dark', lib = sombre ? 'Passer au thème clair' : 'Passer au thème sombre';
+  btnTheme.innerHTML = ic(sombre ? 'soleil' : 'lune', 20);
+  btnTheme.setAttribute('aria-label', lib); btnTheme.title = lib;
+}
+btnTheme.addEventListener('click', () => {
+  const t = themeActuel() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('pv-theme', t); } catch (e) {}
+  majBoutonTheme();
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', majBoutonTheme);
+majBoutonTheme();
+
+// ================================================================ rendu des listes
+function enteteTri(c, p) {
+  if (!c.tri || !p) return `<span${c.titreLong ? ` title="${esc(c.titreLong)}"` : ''}>${esc(c.titre)}</span>`;
+  const actif = p.tri === c.tri;
+  const icone = actif ? (p.sens === 'asc' ? 'flecheHaut' : 'flecheBas') : 'triable';
+  return `<button type="button" class="tri" data-tri="${c.tri}"${c.titreLong ? ` title="Trier par ${esc(c.titreLong.toLowerCase())}"` : ''}>${
+    esc(c.titre)}${ic(icone, 14)}</button>`;
+}
+function tableHtml(colonnes, lignes, idDe, p, legende) {
+  return `<table class="tableau">${legende ? `<caption class="sr">${esc(legende)}</caption>` : ''}
+    <thead><tr>${colonnes.map(c => {
+      const tri = p && c.tri && p.tri === c.tri ? ` aria-sort="${p.sens === 'asc' ? 'ascending' : 'descending'}"` : '';
+      return `<th scope="col" class="${c.num ? 'num' : ''} ${c.large ? 'col-large' : ''} ${c.cls || ''}"${tri}>${enteteTri(c, p)}</th>`;
+    }).join('')}</tr></thead>
+    <tbody>${lignes.map(l => {
+      const id = idDe(l), lien = contenu => `<a class="lien-fiche" href="${esc(lienFiche(id))}" data-fiche="${esc(id)}">${contenu}</a>`;
+      return `<tr data-fiche="${esc(id)}">${colonnes.map(c =>
+        `<td class="${c.num ? 'num' : ''} ${c.large ? 'col-large' : ''} ${c.cls || ''}">${c.rendu(l, lien)}</td>`).join('')}</tr>`;
+    }).join('')}</tbody></table>`;
+}
+const cartesHtml = (carte, lignes, idDe) => `<ul class="cartes" role="list">${lignes.map(l => { const id = idDe(l);
+  return `<li><a class="carte-ligne" href="${esc(lienFiche(id))}" data-fiche="${esc(id)}">${carte(l)}</a></li>`; }).join('')}</ul>`;
+
+function squelette(colonnes, n = 8) {
+  const largeur = (i, j) => 35 + ((i * 37 + j * 23) % 50);
+  const lignes = Array.from({ length: n }, (_, i) => `<tr>${colonnes.map((c, j) =>
+    `<td class="${c.num ? 'num' : ''} ${c.large ? 'col-large' : ''} ${c.cls || ''}"><span class="sq" style="width:${c.num ? 55 : largeur(i, j)}%"></span>${
+      c.deux ? `<span class="sq sq--fin" style="width:${largeur(i + 3, j)}%"></span>` : ''}</td>`).join('')}</tr>`).join('');
+  const cartes = Array.from({ length: 5 }, (_, i) => `<li><div class="carte-ligne">
+    <span class="sq sq--fin" style="width:40%"></span><span class="sq" style="width:${largeur(i, 1)}%;margin-top:12px"></span>
+    <span class="sq sq--fin" style="width:${largeur(i, 2) + 10}%"></span>
+    <div class="carte-ligne__bas"><span class="sq" style="width:45%"></span><span class="sq" style="width:25%;margin:0"></span></div></div></li>`).join('');
+  return `<p class="sr">Chargement en cours…</p><table class="tableau" aria-hidden="true"><thead><tr>${colonnes.map(c =>
+    `<th class="${c.num ? 'num' : ''} ${c.large ? 'col-large' : ''} ${c.cls || ''}">${esc(c.titre)}</th>`).join('')}</tr></thead><tbody>${lignes}</tbody></table>
+    <ul class="cartes" aria-hidden="true">${cartes}</ul>`;
+}
+
+// ================================================================ rendu d'une vue
+let minuteurRecherche = null, jetonListe = 0, minuteurSquelette = null;
+
+function majNav() {
+  document.querySelectorAll('.onglet').forEach(a => {
+    if (a.dataset.vue === ETAT.vue) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+}
+
+function htmlFiltres(v) {
+  const tris = v.colonnes.filter(c => c.tri);
+  const optionsTri = tris.flatMap(c => ['desc', 'asc'].map((s, i) =>
+    `<option value="${c.tri}:${s}">${esc(c.titreLong || c.titre)} — ${LIB_SENS[c.genre || 'num'][i]}</option>`)).join('');
+  const aDesFiltres = v.filtres.includes('statut');
+  return `
+    <div class="recherche"><label class="sr" for="f-q">Rechercher</label>${ic('recherche', 18)}
+      <input class="champ" type="search" id="f-q" placeholder="${esc(v.placeholder)}" autocomplete="off" enterkeyhint="search" maxlength="120"></div>
+    <button type="button" class="btn bouton-filtres" id="bouton-filtres" aria-expanded="false" aria-controls="panneau">
+      ${ic(aDesFiltres ? 'filtre' : 'liste', 18)}<span>${aDesFiltres ? 'Filtres' : 'Trier'}</span><span class="compteur" id="compteur-filtres" hidden></span></button>
+    <div class="panneau" id="panneau">
+      ${aDesFiltres ? `<div class="groupe"><label class="groupe__lib" for="f-statut">Statut de l'extraction</label>
+        <span class="selecteur"><select class="champ" id="f-statut"><option value="">Tous les statuts</option>${
+          Object.entries(LIBELLE_STATUT).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>${ic('bas', 16)}</span></div>` : ''}
+      ${v.filtres.includes('attributaire') ? `<div class="groupe"><span class="groupe__lib" aria-hidden="true">Attribution</span>
+        <label class="case"><input type="checkbox" id="f-attributaire"> Avec attributaire seulement</label></div>` : ''}
+      <div class="groupe tri-mobile"><label class="groupe__lib" for="f-tri">Trier par</label>
+        <span class="selecteur"><select class="champ" id="f-tri">${optionsTri}</select>${ic('bas', 16)}</span></div>
+    </div>
+    <div class="puces-actives" id="puces"></div>`;
+}
+
+function rendreVue() {
+  const v = VUES[ETAT.vue];
+  clearTimeout(minuteurRecherche);
+  majNav();
+  document.title = `${v.titre} — Marchés publics`;
+  main.innerHTML = `
+    <div class="tete-vue"><h1 id="titre-vue" tabindex="-1">${esc(v.titre)}</h1><p>${esc(v.intro)}</p></div>
+    <section id="kpis" class="kpis" aria-label="Chiffres clés"></section>
+    <form class="filtres" id="filtres" role="search" aria-label="Rechercher et filtrer">${htmlFiltres(v)}</form>
+    <section class="resultats" id="resultats" aria-labelledby="compte">
+      <div class="resultats__tete"><p id="compte" tabindex="-1" aria-live="polite">Chargement…</p></div>
+      <div class="cadre" id="zone"></div>
+    </section>`;
+  rendreKpis();
+  lierFiltres();
+  synchroniserChamps();
+  chargerResultats();
+}
+
+function rendreKpis() {
+  const el = $('#kpis'); if (!el) return;
+  const v = VUES[ETAT.vue];
+  if (ETAT.vue === 'qualite') return rendreRepartition(el);
+  if (!STATS) {
+    if (ERREUR_STATS) {
+      el.innerHTML = `<div class="kpi" style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <span class="doux">Chiffres clés indisponibles pour le moment.</span>
+        <button type="button" class="btn" id="reessayer-stats">${ic('rafraichir', 18)}Réessayer</button></div>`;
+      $('#reessayer-stats').onclick = chargerStats;
+    } else {
+      el.innerHTML = Array.from({ length: v.kpis({}).length }, () =>
+        `<div class="kpi" aria-hidden="true"><span class="sq sq--fin" style="width:60%"></span><span class="sq sq--gros" style="width:45%;margin-top:10px"></span></div>`).join('');
+    }
+    return;
+  }
+  el.innerHTML = v.kpis(STATS).map(([lib, val, note]) =>
+    `<div class="kpi"><div class="kpi__lib">${lib}</div><div class="kpi__val">${val}</div>${note ? `<div class="kpi__note">${note}</div>` : ''}</div>`).join('');
+}
+
+async function rendreRepartition(el) {
+  el.className = 'repartition';
+  if (!QUALITE) {
+    el.innerHTML = `<span class="sq" style="width:30%"></span><span class="sq" style="height:14px;margin-top:20px"></span>
+      <span class="sq sq--fin" style="width:70%;margin-top:24px"></span>`;
+    try { QUALITE = await api('/api/qualite'); }
+    catch (e) {
+      if (e.type === 'session' || !el.isConnected) return;
+      el.innerHTML = blocErreur(e, true);
+      el.querySelector('[data-action=reessayer]').onclick = () => rendreRepartition(el);
+      return;
+    }
+    if (!el.isConnected) return;
+  }
+  const statuts = QUALITE.statuts || [], total = statuts.reduce((a, s) => a + s.n, 0);
+  const couleur = s => Object.hasOwn(LIBELLE_STATUT, s) ? `var(--s-${s})` : 'var(--s-annule)';
+  el.innerHTML = `<h2>Répartition des ${nb(total)} PV par statut d'extraction</h2>
+    <div class="repartition__barre" role="img" aria-label="${esc(statuts.map(s => `${LIBELLE_STATUT[s.statut] || s.statut} : ${dec(s.n / total * 100, 1)} %`).join(', '))}">${
+      statuts.map(s => `<i style="--c:${couleur(s.statut)};flex-grow:${s.n}"></i>`).join('')}</div>
+    <ul class="legende">${statuts.map(s => `<li><span class="pastille" style="--c:${couleur(s.statut)}"></span>
+      <span><b>${nb(s.n)}</b><span class="legende__pct">${dec(s.n / total * 100, 1)} %</span><br>
+      <span class="doux">${esc(LIBELLE_STATUT[s.statut] || s.statut)}</span></span></li>`).join('')}</ul>`;
+}
+
+function lierFiltres() {
+  const q = $('#f-q'), panneau = $('#panneau'), bouton = $('#bouton-filtres');
+  // Une seule requête 350 ms après la dernière frappe.
+  const validerRecherche = () => {
+    clearTimeout(minuteurRecherche);
+    const val = q.value.trim();
+    if (val === (ETAT.p.q || '')) return false;
+    majParams({ q: val, page: 1 });
+    return true;
+  };
+  q.addEventListener('input', () => {
+    clearTimeout(minuteurRecherche);
+    minuteurRecherche = setTimeout(() => { if (validerRecherche()) chargerResultats(); }, 350);
+  });
+  $('#filtres').addEventListener('submit', e => {
+    e.preventDefault();
+    if (validerRecherche()) chargerResultats();
+    if (matchMedia('(max-width: 639px)').matches) q.blur();
+  });
+  const changer = maj => { validerRecherche(); majParams(maj); chargerResultats(); };
+  $('#f-statut')?.addEventListener('change', e => changer({ statut: e.target.value, page: 1 }));
+  $('#f-attributaire')?.addEventListener('change', e => changer({ attributaire: e.target.checked ? '1' : '', page: 1 }));
+  $('#f-tri').addEventListener('change', e => { const [tri, sens] = e.target.value.split(':'); changer({ tri, sens, page: 1 }); });
+  bouton.addEventListener('click', () => {
+    const ouvert = panneau.classList.toggle('ouvert');
+    bouton.setAttribute('aria-expanded', ouvert);
+  });
+  $('#puces').addEventListener('click', e => {
+    const b = e.target.closest('[data-retirer]'); if (!b) return;
+    changer({ [b.dataset.retirer]: '', page: 1 });
+    q.focus();
+  });
+}
+
+function synchroniserChamps() {
+  const v = VUES[ETAT.vue], p = params();
+  const q = $('#f-q'); if (!q) return;
+  if (document.activeElement !== q) q.value = p.q;
+  const st = $('#f-statut'); if (st) st.value = p.statut;
+  const at = $('#f-attributaire'); if (at) at.checked = p.attributaire === '1';
+  $('#f-tri').value = `${p.tri}:${p.sens}`;
+  const actifs = [];
+  if (p.statut) actifs.push(['statut', `Statut : ${LIBELLE_STATUT[p.statut]}`, true]);
+  if (p.attributaire) actifs.push(['attributaire', 'Avec attributaire', true]);
+  if (p.acheteur) actifs.push(['acheteur', `Maître d'ouvrage : ${p.acheteur}`, false]);
+  $('#puces').innerHTML = actifs.map(([k, lib, mobile]) => `<span class="puce-filtre ${mobile ? 'seul-mobile' : ''}"><span>${esc(lib)}</span>
+    <button type="button" data-retirer="${k}" aria-label="Retirer le filtre ${esc(lib)}">${ic('fermer', 16)}</button></span>`).join('');
+  const compteur = $('#compteur-filtres');
+  const n = ['statut', 'attributaire', 'acheteur'].filter(k => v.filtres.includes(k) && p[k]).length;
+  compteur.hidden = !n; compteur.textContent = n;
+}
+
+async function chargerResultats({ focus } = {}) {
+  const v = VUES[ETAT.vue], zone = $('#zone'), compte = $('#compte');
+  if (!zone) return;
+  const moi = ++jetonListe, p = params();
+  clearTimeout(minuteurSquelette);
+  zone.setAttribute('aria-busy', 'true');
+  if (zone.dataset.rempli !== '1') zone.innerHTML = squelette(v.colonnes);
+  else {
+    zone.classList.add('en-cours');             // on grise d'abord, le squelette n'apparaît que si c'est lent
+    minuteurSquelette = setTimeout(() => { if (moi === jetonListe) { zone.classList.remove('en-cours'); zone.innerHTML = squelette(v.colonnes); } }, 300);
+  }
+  compte.textContent = 'Chargement…';
+  const requete = { ...v.fixe, tri: p.tri, sens: p.sens, page: p.page, taille: TAILLE };
+  v.filtres.forEach(k => { requete[k] = p[k]; });
+  try {
+    const r = await api(v.api, requete);
+    if (moi !== jetonListe) return;
+    rendreResultats(v, r, p, focus);
+  } catch (e) {
+    if (moi !== jetonListe || e.type === 'session') return;
+    zone.innerHTML = blocErreur(e); zone.dataset.rempli = '0';
+    compte.textContent = 'Résultats indisponibles';
+    zone.querySelector('[data-action=reessayer]').onclick = () => { if (!STATS) chargerStats(); chargerResultats(); };
+  } finally {
+    if (moi === jetonListe) { clearTimeout(minuteurSquelette); zone.removeAttribute('aria-busy'); zone.classList.remove('en-cours'); }
+  }
+}
+
+function rendreResultats(v, r, p, focus) {
+  const zone = $('#zone'), compte = $('#compte');
+  const pages = Math.max(1, Math.ceil(r.total / TAILLE));
+  compte.innerHTML = r.total
+    ? `<strong>${nb(r.total)}</strong> ${r.total > 1 ? v.unite[1] : v.unite[0]}${pages > 1 ? ` · page ${nb(p.page)} sur ${nb(pages)}` : ''}`
+    : 'Aucun résultat';
+  if (!r.lignes.length) {
+    const filtre = v.filtres.some(k => p[k]);
+    zone.dataset.rempli = '0';
+    zone.innerHTML = `<div class="etat"><span class="etat__icone">${ic('vide', 24)}</span>
+      ${p.page > 1 && r.total
+        ? `<h2>Cette page n'existe pas</h2><p>La liste ne compte que ${nb(pages)} page${pages > 1 ? 's' : ''}.</p>
+           <button type="button" class="btn btn--principal" data-action="page1">Revenir à la première page</button>`
+        : `<h2>Aucun résultat</h2><p>${filtre ? v.vide + ' Essayez des termes plus courts ou retirez un filtre.' : 'Aucune donnée disponible.'}</p>
+           ${filtre ? '<button type="button" class="btn btn--principal" data-action="effacer">Effacer la recherche et les filtres</button>' : ''}`}</div>`;
+    const b = zone.querySelector('[data-action]');
+    if (b) b.onclick = () => {
+      if (b.dataset.action === 'page1') majParams({ page: 1 });
+      else { const vide = {}; v.filtres.forEach(k => { vide[k] = ''; }); majParams({ ...vide, page: 1 }); }
+      chargerResultats();
+    };
+    return;
+  }
+  const legende = `Liste des ${v.unite[1]}, triée par ${(v.colonnes.find(c => c.tri === p.tri)?.titreLong || v.colonnes.find(c => c.tri === p.tri)?.titre || '').toLowerCase()}, ordre ${p.sens === 'asc' ? 'croissant' : 'décroissant'}`;
+  zone.innerHTML = tableHtml(v.colonnes, r.lignes, v.id, p, legende) + cartesHtml(v.carte, r.lignes, v.id) +
+    (pages > 1 ? `<nav class="pagination" aria-label="Pagination">
+      <button type="button" class="btn" data-page="${p.page - 1}" ${p.page <= 1 ? 'disabled' : ''} aria-label="Page précédente">${ic('gauche', 18)}<span class="btn__texte">Précédente</span></button>
+      <span class="pagination__info">Page ${nb(p.page)} / ${nb(pages)}</span>
+      <button type="button" class="btn" data-page="${p.page + 1}" ${p.page >= pages ? 'disabled' : ''} aria-label="Page suivante"><span class="btn__texte">Suivante</span>${ic('droite', 18)}</button>
+    </nav>` : '');
+  zone.dataset.rempli = '1';
+  zone.querySelectorAll('.tri').forEach(b => b.onclick = () => {
+    const c = v.colonnes.find(x => x.tri === b.dataset.tri);
+    const sens = p.tri === c.tri ? (p.sens === 'desc' ? 'asc' : 'desc') : (c.genre === 'texte' ? 'asc' : 'desc');
+    majParams({ tri: c.tri, sens, page: 1 });
+    chargerResultats({ focus: `.tri[data-tri="${c.tri}"]` });
+  });
+  zone.querySelectorAll('[data-page]').forEach(b => b.onclick = () => {
+    majParams({ page: +b.dataset.page }, 'push');
+    chargerResultats({ focus: '#compte' });
+  });
+  if (focus === '#compte') {
+    const res = $('#resultats');
+    if (res.getBoundingClientRect().top < 0) res.scrollIntoView({ behavior: mouvementReduit() ? 'auto' : 'smooth' });
+    compte.focus({ preventScroll: true });
+  } else if (focus) zone.querySelector(focus)?.focus();
+}
+
+// Clic sur une ligne entière du tableau, ou sur un lien de fiche.
+function clicFiche(e) {
+  const a = e.target.closest('a[data-fiche]');
+  if (a) {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;   // nouvel onglet : laisser faire
+    e.preventDefault(); ouvrirFiche(a.dataset.fiche); return;
+  }
+  const tr = e.target.closest('tr[data-fiche]');
+  if (tr && !e.target.closest('a, button') && !String(getSelection())) ouvrirFiche(tr.dataset.fiche);
+}
+main.addEventListener('click', clicFiche);
+
+// ================================================================ fiches
+let jetonFiche = 0, fermetureInterne = false;
+
+const FICHES = {
+  m: { type: 'Marché', charger: ref => api('/api/marche/' + encodeURIComponent(ref)), rendu: rendreMarche },
+  s: { type: 'Société', charger: cle => api('/api/societe/' + encodeURIComponent(cle)), rendu: rendreSociete },
+  a: { type: "Maître d'ouvrage", charger: nom => api('/api/acheteur', { nom }), rendu: rendreAcheteur },
+};
+
+function squeletteFiche() {
+  return `<p class="sr">Chargement de la fiche…</p><div aria-hidden="true">
+    <span class="sq sq--fin" style="width:25%"></span><span class="sq sq--gros" style="width:80%;margin-top:14px"></span>
+    <span class="sq sq--gros" style="width:55%"></span><span class="sq" style="width:35%;margin-top:14px"></span>
+    <div class="kpis" style="margin-top:28px">${'<div class="kpi"><span class="sq sq--fin" style="width:60%"></span><span class="sq sq--gros" style="width:50%;margin-top:10px"></span></div>'.repeat(4)}</div>
+    <div class="cadre">${Array.from({ length: 5 }, (_, i) => `<div style="padding:16px;border-bottom:1px solid var(--bord)"><span class="sq" style="width:${40 + i * 9}%"></span><span class="sq sq--fin" style="width:${70 - i * 6}%"></span></div>`).join('')}</div></div>`;
+}
+
+async function ouvrirFiche(id, { mode = 'push' } = {}) {
+  const i = id.indexOf(':'), type = id.slice(0, i), cle = id.slice(i + 1);
+  if (!Object.hasOwn(FICHES, type) || !cle) return;
+  const f = FICHES[type];
+  ETAT.fiche = id;
+  if (mode === 'push') { profondeur++; ecrireURL('push'); }
+  if (!dlg.open) { dlg.showModal(); document.documentElement.classList.add('fiche-ouverte'); }
+  $('#fiche-type').textContent = f.type;
+  $('#fiche-retour').hidden = profondeur < 2;
+  ficheCorps.setAttribute('aria-busy', 'true');
+  ficheCorps.innerHTML = squeletteFiche();
+  ficheCorps.scrollTop = 0;
+  const moi = ++jetonFiche;
+  try {
+    const d = await f.charger(cle);
+    if (moi !== jetonFiche) return;
+    ficheCorps.innerHTML = f.rendu(d);
+    document.title = `${d.nom || d.reference || f.type} — Marchés publics`;
+    ficheCorps.scrollTop = 0;
+    $('#fiche-titre')?.focus({ preventScroll: true });
+  } catch (e) {
+    if (moi !== jetonFiche || e.type === 'session') return;
+    ficheCorps.innerHTML = `<h2 id="fiche-titre" class="sr">${esc(f.type)}</h2>${blocErreur(e)}`;
+    const b = ficheCorps.querySelector('[data-action=reessayer]');
+    if (e.type === 'introuvable') b.remove(); else b.onclick = () => ouvrirFiche(id, { mode: 'aucun' });
+  } finally {
+    if (moi === jetonFiche) ficheCorps.removeAttribute('aria-busy');
+  }
+}
+function fermerFicheSansHistorique() {
+  ETAT.fiche = null; jetonFiche++;
+  if (dlg.open) { fermetureInterne = true; dlg.close(); }
+}
+dlg.addEventListener('close', () => {
+  document.documentElement.classList.remove('fiche-ouverte');
+  document.body.appendChild(zoneAnnonces);
+  document.title = `${VUES[ETAT.vue].titre} — Marchés publics`;
+  if (fermetureInterne) { fermetureInterne = false; return; }
+  // Fermeture par l'utilisateur (bouton, Échap, clic hors de la fiche) : on dépile l'historique des fiches.
+  jetonFiche++;
+  if (profondeur > 0) history.go(-profondeur);
+  else { ETAT.fiche = null; ecrireURL('replace'); }
+});
+$('#fiche-fermer').addEventListener('click', () => dlg.close());
+$('#fiche-retour').addEventListener('click', () => history.back());
+dlg.addEventListener('click', e => {
+  if (e.target === dlg) { dlg.close(); return; }                 // clic sur le fond
+  const b = e.target.closest('[data-action="voir-marches"]');
+  if (b) {
+    fermerFicheSansHistorique();
+    ETAT.vue = 'marches'; ETAT.p = normaliser('marches', { acheteur: b.dataset.nom }); memoire.marches = ETAT.p;
+    profondeur = 0; ecrireURL('push'); rendreVue(); scrollTo(0, 0);
+    return;
+  }
+  clicFiche(e);
+});
+
+const montantOffre = c => c.montant_verifie ?? c.montant_acte;
+
+function rendreMarche(m) {
+  const conc = m.concurrents || [];
+  const tries = [...conc].sort((a, b) => {
+    const x = montantOffre(a), y = montantOffre(b);
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return x - y;
+  });
+  const montants = conc.map(montantOffre).filter(v => v != null);
+  const max = Math.max(0, ...montants), min = montants.length ? Math.min(...montants) : null;
+  const faits = [
+    ["Maître d'ouvrage (PV)", esc(m.maitre_ouvrage || '—')],
+    ['Procédure', esc(m.procedure || '—')],
+    ['Catégorie', esc(m.categorie || '—')],
+    ['Publié le', esc(m.publie_le || '—')],
+    ['Ouverture des plis', esc(m.date_ouverture || '—')],
+    ["N° d'appel d'offres", esc(m.numero_ao || '—')],
+    ['Statut de l’extraction', puceStatut(m.statut)],
+    ['Source', m.lien ? `<a href="${esc(m.lien)}" target="_blank" rel="noopener">Ouvrir le PV ${ic('externe', 14)}<span class="sr"> (nouvel onglet)</span></a>` : '—'],
+  ];
+  const offre = c => {
+    const mt = montantOffre(c), gagne = c.statut === 'attributaire', ecarte = (c.statut || '').startsWith('ecarte');
+    const ecart = mt != null && m.montant && !gagne ? (mt - m.montant) / m.montant * 100 : null;
+    const w = mt != null && max ? Math.max(1, mt / max * 100) : 0;
+    return `<li class="offre ${gagne ? 'est-gagnant' : ''} ${ecarte ? 'est-ecarte' : ''}">
+      <div class="offre__nom">${gagne ? ic('coupe', 18) : ''}<span>${c.cle ? aFiche('s:' + c.cle, esc(c.nom), 'lien-discret') : esc(c.nom)}${
+        c.lots ? ` <span class="doux">· lot ${esc(c.lots)}</span>` : ''}</span></div>
+      <div class="offre__statut">${puceConc(c.statut)}</div>
+      <div class="offre__barre">${mt != null ? `<span class="jauge" aria-hidden="true"><i style="--l:${w.toFixed(1)}%"></i></span>` : '<span class="doux">Montant non lu</span>'}</div>
+      <div class="offre__montant">${mt != null ? dh(mt) : tiret}${c.montant_verifie != null && c.montant_acte != null && c.montant_verifie !== c.montant_acte
+        ? `<small>acte : ${dh(c.montant_acte)}</small>` : ''}</div>
+      <div class="offre__ecart">${gagne ? 'référence' : ecart == null ? '' : `<span class="sr">Écart avec l'attributaire : </span>${ecart > 0 ? '+' : ''}${dec(ecart, 1)} %`}</div>
+    </li>`;
+  };
+  return `
+    <header class="fiche-tete">
+      <div class="fiche-tete__meta"><span class="mono">${esc(m.reference || m.ref)}</span>${m.categorie ? `<span class="puce">${esc(m.categorie)}</span>` : ''}</div>
+      <h2 id="fiche-titre" tabindex="-1">${esc(m.objet || m.reference || m.ref)}</h2>
+      <p class="fiche-tete__sous">${ic('acheteurs', 18)}${m.acheteur ? aFiche('a:' + m.acheteur, esc(m.acheteur)) : esc(m.maitre_ouvrage || '')}</p>
+    </header>
+    ${m.attributaire ? `<section class="gagnant" aria-label="Attributaire">
+        <div><p class="gagnant__lib">${ic('coupe', 16)}Attributaire</p>
+          <p class="gagnant__nom">${m.cle_attributaire ? aFiche('s:' + m.cle_attributaire, esc(m.attributaire), 'lien-discret') : esc(m.attributaire)}</p></div>
+        <div class="gagnant__montant"><span class="gagnant__lib" style="color:var(--doux)">Montant attribué</span>
+          <b>${m.montant != null ? `${dh(m.montant)} <small>DH</small>` : '—'}</b></div></section>`
+      : `<section class="gagnant gagnant--vide"><div><p class="gagnant__lib">Attributaire</p>
+          <p class="gagnant__nom">${m.infructueux ? 'Marché déclaré infructueux' : 'Attributaire non identifié dans le PV'}</p></div></section>`}
+    ${m.alertes ? `<div class="alerte" role="note">${ic('alerte', 20)}<div><b>Point à vérifier</b>${esc(m.alertes)}</div></div>` : ''}
+    <dl class="faits">${faits.map(([k, v]) => `<div class="fait"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+    ${(m.lots || []).length ? `<section class="section"><div class="section__tete"><h3>Attributaires par lot</h3><p>${m.lots.length} lot${m.lots.length > 1 ? 's' : ''}</p></div>
+      <div class="cadre cadre--fixe"><ul class="classement">${m.lots.map(l => `<li><span><span class="doux">Lot ${esc(l.lot || '?')} · </span>${esc(l.attributaire || '—')}</span>
+        <b>${l.montant != null ? dh(l.montant) + ' DH' : '—'}</b></li>`).join('')}</ul></div></section>` : ''}
+    <section class="section" aria-labelledby="titre-offres">
+      <div class="section__tete"><h3 id="titre-offres">Comparaison des offres</h3>
+        <p>${nb(conc.length)} concurrent${conc.length > 1 ? 's' : ''}${montants.length ? ` · offres de ${dh(min)} à ${dh(max)} DH` : ''}</p></div>
+      ${conc.length ? `<div class="cadre cadre--fixe offres-cadre">
+        <div class="offres__entete" aria-hidden="true"><span>Concurrent</span><span>Résultat</span><span>Offre (proportion)</span><span class="num">Montant (DH)</span><span class="num">Écart</span></div>
+        <ol class="offres">${tries.map(offre).join('')}</ol></div>
+        <p class="section__pied">Offres classées de la moins chère à la plus chère. Barres proportionnelles au montant de l'offre (après vérification si disponible, sinon acte d'engagement). Écart calculé par rapport au montant attribué.</p>`
+      : `<div class="cadre cadre--fixe"><div class="etat etat--compact"><p>Aucun concurrent lu dans ce PV.</p></div></div>`}
+    </section>`;
+}
+
+function rendreSociete(s) {
+  const t = pct(s.gagnes, s.participations), marches = s.marches || [];
+  const colonnes = [
+    { titre: 'Marché', deux: true, rendu: (m, lien) => `${lien(esc(m.acheteur || ''))}<div class="sous">${esc(m.objet || '')}</div>` },
+    { titre: 'Son offre (DH)', num: true, rendu: m => montantOffre(m) != null ? dh(montantOffre(m)) : tiret },
+    { titre: 'Montant attribué (DH)', num: true, large: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
+    { titre: 'Résultat', rendu: m => puceConc(m.statut_concurrent) },
+    { titre: 'Attributaire', large: true, rendu: m => esc(m.attributaire || '—') },
+    { titre: 'Ouverture', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
+  ];
+  const carte = m => `
+    <div class="carte-ligne__haut"><span class="mono">${esc(m.reference || m.ref)}</span><span>${esc(m.date_ouverture || '')}</span></div>
+    <div class="carte-ligne__titre">${esc(m.acheteur || '')}</div><div class="sous">${esc(m.objet || '')}</div>
+    <div class="carte-ligne__bas"><div>${puceConc(m.statut_concurrent)}</div>
+      <div class="carte-ligne__montant"><span class="etiq">Son offre</span>${montantOffre(m) != null ? `${dh(montantOffre(m))} <small>DH</small>` : tiret}</div></div>`;
+  return `
+    <header class="fiche-tete"><h2 id="fiche-titre" tabindex="-1">${esc(s.nom)}</h2></header>
+    <section class="kpis kpis--compact" aria-label="Chiffres clés">
+      <div class="kpi"><div class="kpi__lib">Participations</div><div class="kpi__val">${nb(s.participations)}</div></div>
+      <div class="kpi"><div class="kpi__lib">Marchés gagnés</div><div class="kpi__val">${nb(s.gagnes)}</div></div>
+      <div class="kpi"><div class="kpi__lib">Taux de réussite</div><div class="kpi__val">${t} %</div><span class="jauge" aria-hidden="true" style="height:6px"><i style="--l:${t}%;background:var(--barre-gagnant)"></i></span></div>
+      <div class="kpi"><div class="kpi__lib">Montant gagné</div><div class="kpi__val" title="${dh(s.montant)} DH">${dhCourt(s.montant)} <small>DH</small></div></div>
+      <div class="kpi"><div class="kpi__lib">Maîtres d'ouvrage</div><div class="kpi__val">${nb(s.acheteurs)}</div></div>
+    </section>
+    <section class="section"><div class="section__tete"><h3>Participations</h3>
+      <p>${marches.length >= 100 ? 'Les 100 plus récentes' : `${nb(marches.length)} participation${marches.length > 1 ? 's' : ''}`}</p></div>
+      ${marches.length ? `<div class="cadre">${tableHtml(colonnes, marches, m => 'm:' + m.ref, null, 'Participations de la société')}${cartesHtml(carte, marches, m => 'm:' + m.ref)}</div>`
+        : '<div class="cadre cadre--fixe"><div class="etat etat--compact"><p>Aucune participation enregistrée.</p></div></div>'}
+    </section>`;
+}
+
+function rendreAcheteur(a) {
+  const marches = a.marches_liste || [], gagnants = a.gagnants || [];
+  const maxG = Math.max(1, ...gagnants.map(g => g.n));
+  const colonnes = [
+    { titre: 'Référence', cls: 'col-ref', rendu: (m, lien) => `${lien(`<span class="mono">${esc(m.reference || m.ref)}</span>`)}` },
+    { titre: 'Objet', deux: true, rendu: m => `<div class="sous" style="color:var(--texte-2)">${esc(m.objet || '')}</div>` },
+    { titre: 'Attributaire', rendu: m => m.attributaire ? esc(m.attributaire) : tiret },
+    { titre: 'Montant (DH)', num: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
+    { titre: 'Conc.', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
+    { titre: 'Ouverture', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
+  ];
+  const carte = m => `
+    <div class="carte-ligne__haut"><span class="mono">${esc(m.reference || m.ref)}</span><span>${esc(m.date_ouverture || '')}</span></div>
+    <div class="carte-ligne__titre" style="font-weight:500">${esc(m.objet || '')}</div>
+    <div class="carte-ligne__bas"><div><span class="etiq">Attributaire</span>${m.attributaire ? esc(m.attributaire) : '<span class="doux">—</span>'}</div>
+      <div class="carte-ligne__montant">${m.montant != null ? `${dh(m.montant)} <small>DH</small>` : tiret}</div></div>`;
+  return `
+    <header class="fiche-tete"><h2 id="fiche-titre" tabindex="-1">${esc(a.nom)}</h2></header>
+    <section class="kpis kpis--compact" aria-label="Chiffres clés">
+      <div class="kpi"><div class="kpi__lib">Marchés</div><div class="kpi__val">${nb(a.marches)}</div></div>
+      <div class="kpi"><div class="kpi__lib">Attribués</div><div class="kpi__val">${nb(a.attribues)}</div><div class="kpi__note">${pct(a.attribues, a.marches)} % des marchés</div></div>
+      <div class="kpi"><div class="kpi__lib">Infructueux</div><div class="kpi__val">${nb(a.infructueux)}</div><div class="kpi__note">${pct(a.infructueux, a.marches)} % des marchés</div></div>
+      <div class="kpi"><div class="kpi__lib">Montant attribué</div><div class="kpi__val" title="${dh(a.montant)} DH">${dhCourt(a.montant)} <small>DH</small></div></div>
+      <div class="kpi"><div class="kpi__lib">Concurrents / marché</div><div class="kpi__val">${dec(a.concurrents / Math.max(1, a.marches), 1)}</div></div>
+    </section>
+    <div class="fiche-actions"><button type="button" class="btn" data-action="voir-marches" data-nom="${esc(a.nom)}">${ic('marches', 18)}Voir tous ses marchés dans l'onglet Marchés</button></div>
+    ${gagnants.length ? `<section class="section"><div class="section__tete"><h3>Sociétés qui gagnent le plus chez ce maître d'ouvrage</h3><p>Nombre de marchés remportés</p></div>
+      <div class="cadre cadre--fixe"><ol class="classement">${gagnants.map(g => `<li><span>${esc(g.nom)}</span><b>${nb(g.n)}</b>
+        <span class="jauge" aria-hidden="true"><i style="--l:${(g.n / maxG * 100).toFixed(1)}%"></i></span></li>`).join('')}</ol></div></section>` : ''}
+    <section class="section"><div class="section__tete"><h3>Marchés récents</h3>
+      <p>${marches.length >= 100 ? 'Les 100 plus récents' : `${nb(marches.length)} marché${marches.length > 1 ? 's' : ''}`}</p></div>
+      ${marches.length ? `<div class="cadre">${tableHtml(colonnes, marches, m => 'm:' + m.ref, null, "Marchés du maître d'ouvrage")}${cartesHtml(carte, marches, m => 'm:' + m.ref)}</div>`
+        : '<div class="cadre cadre--fixe"><div class="etat etat--compact"><p>Aucun marché.</p></div></div>'}
+    </section>`;
+}
+
+// ================================================================ navigation
+function allerVue(vue) {
+  if (vue === ETAT.vue) { const t = $('#titre-vue'); if (t) { scrollTo(0, 0); } return; }
+  ETAT.vue = vue; ETAT.p = memoire[vue] || {}; ETAT.fiche = null; profondeur = 0;
+  ecrireURL('push');
+  rendreVue();
+  scrollTo(0, 0);
+  $('#titre-vue').focus({ preventScroll: true });
+}
+document.querySelectorAll('a[data-vue]').forEach(a => a.addEventListener('click', e => {
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
+  e.preventDefault(); allerVue(a.dataset.vue);
+}));
+
+addEventListener('popstate', e => {
+  profondeur = e.state?.p ?? 0;
+  const n = lireURL();
+  if (n.vue !== ETAT.vue) { ETAT.vue = n.vue; ETAT.p = n.p; memoire[n.vue] = n.p; rendreVue(); }
+  else if (JSON.stringify(n.p) !== JSON.stringify(ETAT.p)) { ETAT.p = n.p; memoire[n.vue] = n.p; synchroniserChamps(); chargerResultats(); }
+  if (n.fiche !== ETAT.fiche) { if (n.fiche) ouvrirFiche(n.fiche, { mode: 'aucun' }); else fermerFicheSansHistorique(); }
+  else if (n.fiche) $('#fiche-retour').hidden = profondeur < 2;
+});
+
+// ================================================================ démarrage
+async function chargerStats() {
+  ERREUR_STATS = null;
+  if (!STATS) rendreKpis();
+  try { STATS = await api('/api/stats'); }
+  catch (e) { if (e.type === 'session') return; ERREUR_STATS = e; rendreKpis(); return; }
+  $('#entete').textContent = `${nb(STATS.marches)} marchés`;
+  $('#qui').textContent = STATS.visiteur || '';
+  const av = $('#avatar'); av.textContent = initiales(STATS.visiteur); av.parentNode.title = STATS.visiteur || '';
+  rendreKpis();
+}
+
+(function demarrer() {
+  const e = lireURL();
+  ETAT = { vue: e.vue, p: e.p, fiche: null };
+  memoire[e.vue] = e.p;
+  history.replaceState({ p: 0 }, '', construireHash(ETAT.vue, ETAT.p, null));
+  rendreVue();
+  chargerStats();
+  if (e.fiche) ouvrirFiche(e.fiche);             // empile la fiche au-dessus de la liste : « retour » ramène à la liste
+})();
+</script>
+</body>
+</html>

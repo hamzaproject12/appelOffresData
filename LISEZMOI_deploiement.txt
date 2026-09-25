@@ -1,0 +1,88 @@
+SITE DES MARCHÉS PUBLICS — DÉPLOIEMENT SUR RAILWAY
+==================================================
+
+Ce dossier contient un site complet : page d'accès par nom, dashboard, API paginée et
+page d'administration qui montre qui consulte quoi.
+
+  serveur.py            l'application (FastAPI)
+  statique/dashboard.html  l'interface, identique à la version locale mais alimentée par l'API
+  construire_base.py    fabrique pv.db à partir des résultats de l'extraction
+  pv.db                 la base (à régénérer à chaque mise à jour des données)
+  Dockerfile            recette de construction pour Railway
+  requirements.txt      dépendances Python
+
+
+1) FABRIQUER LA BASE
+--------------------
+   cd C:\pv\site
+   python construire_base.py C:\pv\resultats pv.db
+
+   -> pv.db, environ 15 Mo pour 5 782 marchés. Elle ne contient pas le texte OCR.
+   À refaire après chaque extraction, puis redéployer (étape 4).
+
+
+2) ESSAYER EN LOCAL AVANT DE PUBLIER
+------------------------------------
+   python -m pip install -r requirements.txt
+   python -m uvicorn serveur:app --port 8000
+
+   Dans PowerShell, les variables s'écrivent avec $env: (et non "set", qui ne marche que dans cmd.exe) :
+      $env:SECRET = "quelque-chose-de-long"
+      $env:ADMIN_MOTDEPASSE = "choisis-un-mot-de-passe"
+      python -m uvicorn serveur:app --port 8000
+
+   Au démarrage, le serveur affiche la base qu'il utilise :
+      [pv] base : C:\pv\site\pv.db
+   S'il annonce une base introuvable ou vide, fabrique-la (étape 1) ou indique son chemin :
+      $env:BASE = "C:\pv\site\pv.db"
+
+   Ouvre http://localhost:8000  (le site) et http://localhost:8000/admin (le suivi).
+
+
+3) PUBLIER SUR RAILWAY
+----------------------
+   a) Crée un dépôt Git PRIVÉ avec ce dossier et pousse-le (pv.db comprise).
+   b) Sur railway.app : New Project -> Deploy from GitHub repo -> choisis ce dépôt.
+      Railway détecte le Dockerfile tout seul.
+   c) Variables (onglet Variables) :
+        SECRET             une longue chaîne au hasard (change-la et tout le monde est déconnecté)
+        ADMIN_MOTDEPASSE   ton mot de passe pour /admin
+        ADMIN_UTILISATEUR  facultatif, "admin" par défaut
+        CODE_ACCES         facultatif : un code commun demandé en plus du nom
+        MENTION_SUIVI      "0" pour retirer la phrase d'information sur l'enregistrement
+   d) Settings -> Networking -> Generate Domain : tu obtiens une adresse en .up.railway.app,
+      en HTTPS. Tu peux brancher ton propre nom de domaine au même endroit.
+
+   Coût : environ 5 $ par mois pour ce type de service.
+
+
+4) METTRE À JOUR LES DONNÉES
+----------------------------
+   python construire_base.py C:\pv\resultats pv.db
+   git add pv.db && git commit -m "données du JJ/MM" && git push
+
+   Railway reconstruit et redéploie tout seul. Les visiteurs ne voient rien passer.
+
+
+5) CE QUI PROTÈGE LES DONNÉES
+-----------------------------
+   - Le navigateur ne reçoit jamais le fichier complet : chaque requête renvoie au plus 100 lignes.
+   - Limites par visiteur : 90 requêtes par minute, 4 000 par jour. Au-delà, réponse 429.
+   - Aucune page ne permet d'exporter la totalité.
+   - Le journal enregistre pour chaque action : horodatage, nom saisi, adresse IP, type d'action,
+     filtres utilisés, nombre de résultats, durée et navigateur.
+   - /admin montre les visiteurs, l'activité par jour, les recherches les plus fréquentes,
+     les 200 dernières actions, et permet de télécharger tout le journal en CSV.
+
+   À savoir : ces mesures rendent la copie massive lente et visible, elles ne la rendent pas
+   impossible. Quelqu'un de déterminé peut toujours recopier ce qu'il voit.
+
+
+6) SUPPRIMER OU RÉDUIRE LE SUIVI
+--------------------------------
+   Le suivi est dans la fonction noter() de serveur.py. Pour ne plus enregistrer les adresses IP,
+   remplace la valeur de ip par "". Pour tout désactiver, mets un return au début de la fonction.
+
+   Note juridique : au Maroc (loi 09-08) comme en Europe (RGPD), enregistrer le nom et l'activité
+   de personnes identifiables demande de les en informer. C'est le rôle de la phrase affichée sur
+   la page d'accueil. La retirer t'expose en cas de réclamation.

@@ -58,8 +58,10 @@ CODE_ACCES = os.environ.get("CODE_ACCES", "")
 MENTION_SUIVI = os.environ.get("MENTION_SUIVI", "1") != "0"
 DUREE_SESSION = 12 * 3600
 PAR_PAGE_MAX = 100
-LIMITE_MINUTE = 90            # requêtes par minute et par visiteur
-LIMITE_JOUR = 4000            # requêtes par jour et par visiteur
+LIMITE_MINUTE = int(os.environ.get("LIMITE_MINUTE", 90))     # requêtes par minute
+LIMITE_JOUR = int(os.environ.get("LIMITE_JOUR", 1200))       # requêtes par jour
+# Les limites comptent à la fois par nom saisi ET par adresse IP : changer de nom ne remet pas
+# les compteurs à zéro.
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -90,6 +92,8 @@ print(f"[pv] administration : " + (f"activée (identifiant « {ADMIN_UTILISATEUR
       else "DÉSACTIVÉE — définis ADMIN_MOTDEPASSE avant de lancer le serveur, sinon /admin refusera tout"),
       flush=True)
 print(f"[pv] code d'accès visiteurs : " + ("demandé" if CODE_ACCES else "aucun (le nom suffit)"), flush=True)
+print(f"[pv] limites : {LIMITE_MINUTE} requêtes/minute et {LIMITE_JOUR}/jour, par nom et par adresse IP",
+      flush=True)
 
 
 def preparer_journal() -> None:
@@ -163,26 +167,37 @@ _recentes: dict[str, deque] = defaultdict(deque)
 _jour: dict[str, list] = defaultdict(lambda: [datetime.now(timezone.utc).date().isoformat(), 0])
 
 
-def dans_les_clous(visiteur: str) -> bool:
+def _compter(cle: str) -> bool:
     maintenant = time.time()
-    f = _recentes[visiteur]
+    f = _recentes[cle]
     while f and maintenant - f[0] > 60:
         f.popleft()
     f.append(maintenant)
     aujourdhui = datetime.now(timezone.utc).date().isoformat()
-    compteur = _jour[visiteur]
+    compteur = _jour[cle]
     if compteur[0] != aujourdhui:
         compteur[0], compteur[1] = aujourdhui, 0
     compteur[1] += 1
     return len(f) <= LIMITE_MINUTE and compteur[1] <= LIMITE_JOUR
 
 
+def adresse(request: Request) -> str:
+    return (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or (request.client.host if request.client else "?"))
+
+
+def dans_les_clous(visiteur: str, ip: str) -> bool:
+    ok_nom = _compter("nom:" + visiteur)
+    ok_ip = _compter("ip:" + ip)
+    return ok_nom and ok_ip
+
+
 def visiteur(request: Request) -> dict:
     session = verifier(request.cookies.get("pv"))
     if not session:
         raise HTTPException(401, "Session expirée")
-    if not dans_les_clous(session["n"]):
-        raise HTTPException(429, "Trop de requêtes, réessayez dans une minute.")
+    if not dans_les_clous(session["n"], adresse(request)):
+        raise HTTPException(429, "Trop de requêtes, réessayez plus tard.")
     return session
 
 
@@ -190,8 +205,7 @@ def noter(request: Request, session: dict | None, action: str, details: str = ""
           resultats: int = 0, debut: float = 0.0) -> None:
     """Journalise une consultation (côté serveur uniquement)."""
     nom = (session or {}).get("n", "?")
-    ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-          or (request.client.host if request.client else ""))
+    ip = adresse(request)
     ecrire("INSERT INTO journal (horodatage, visiteur, ip, action, details, resultats, duree_ms, agent)"
            " VALUES (?,?,?,?,?,?,?,?)",
            (datetime.now(timezone.utc).isoformat(timespec="seconds"), nom, ip, action, details[:500],
@@ -308,6 +322,8 @@ def stats(request: Request, session: dict = Depends(visiteur)):
     debut = time.time()
     g = lire("""SELECT COUNT(*) marches, SUM(attributaire IS NOT NULL) avec_attributaire,
                 SUM(infructueux) infructueux, COALESCE(SUM(montant),0) montant,
+                SUM(estimation IS NOT NULL) avec_estimation,
+                SUM(prix_reference IS NOT NULL) avec_prix_reference,
                 (SELECT COUNT(*) FROM concurrents) concurrents,
                 (SELECT COUNT(*) FROM societes) societes,
                 (SELECT COUNT(*) FROM acheteurs) acheteurs FROM marches""")[0]
@@ -336,14 +352,25 @@ def api_marches(request: Request, session: dict = Depends(visiteur)):
     if p.get("montant_min"):
         where.append("m.montant >= ?")
         params.append(float(p["montant_min"]))
+    if p.get("estimation") == "1":
+        where.append("m.estimation IS NOT NULL")
+    if p.get("ecart_max"):                      # « le gagnant était au moins X % sous la référence »
+        where.append("m.ecart_attributaire IS NOT NULL AND m.ecart_attributaire <= ?")
+        params.append(float(p["ecart_max"]))
+    if p.get("ecart_min"):
+        where.append("m.ecart_attributaire IS NOT NULL AND m.ecart_attributaire >= ?")
+        params.append(float(p["ecart_min"]))
     tris = {"date": "m.tri_date", "montant": "m.montant", "concurrents": "m.nb_concurrents",
-            "acheteur": "m.acheteur", "reference": "m.reference", "attributaire": "m.attributaire"}
+            "acheteur": "m.acheteur", "reference": "m.reference", "attributaire": "m.attributaire",
+            "estimation": "m.estimation", "reference_prix": "m.prix_reference",
+            "ecart": "m.ecart_attributaire"}
     colonne = tris.get(p.get("tri", "date"), "m.tri_date")
     sens = "ASC" if p.get("sens") == "asc" else "DESC"
     filtre = " AND ".join(where)
     total = lire(f"SELECT COUNT(*) n FROM marches m WHERE {filtre}", tuple(params))[0]["n"]
     lignes = lire(f"""SELECT m.ref, m.reference, m.acheteur, m.maitre_ouvrage, m.objet, m.attributaire,
-                      m.montant, m.nb_concurrents, m.date_ouverture, m.statut, m.infructueux
+                      m.montant, m.nb_concurrents, m.date_ouverture, m.statut, m.infructueux,
+                      m.estimation, m.prix_reference, m.ecart_attributaire
                       FROM marches m WHERE {filtre}
                       ORDER BY {colonne} IS NULL, {colonne} {sens} LIMIT ? OFFSET ?""",
                    tuple(params) + (taille, (page - 1) * taille))
@@ -359,8 +386,9 @@ def api_marche(ref: str, request: Request, session: dict = Depends(visiteur)):
     if not m:
         raise HTTPException(404, "Marché introuvable")
     m = m[0]
-    m["concurrents"] = lire("SELECT nom, cle, montant_acte, montant_verifie, statut, lots FROM concurrents"
-                            " WHERE ref = ? ORDER BY montant_verifie IS NULL, montant_verifie", (ref,))
+    m["concurrents"] = lire("SELECT nom, cle, montant_acte, montant_verifie, statut, lots, ecart"
+                            " FROM concurrents WHERE ref = ?"
+                            " ORDER BY montant_verifie IS NULL, montant_verifie", (ref,))
     m["lots"] = lire("SELECT lot, attributaire, montant FROM lots WHERE ref = ?", (ref,))
     noter(request, session, "fiche marché", f"{ref} — {(m.get('acheteur') or '')[:80]}", 1, debut)
     return m
@@ -395,9 +423,13 @@ def api_societe(cle: str, request: Request, session: dict = Depends(visiteur)):
         raise HTTPException(404, "Société introuvable")
     s = s[0]
     s["marches"] = lire("""SELECT m.ref, m.reference, m.acheteur, m.objet, m.attributaire, m.montant,
-                           m.date_ouverture, c.montant_acte, c.montant_verifie, c.statut statut_concurrent
+                           m.date_ouverture, m.prix_reference, c.montant_acte, c.montant_verifie,
+                           c.statut statut_concurrent, c.ecart
                            FROM concurrents c JOIN marches m ON m.ref = c.ref
                            WHERE c.cle = ? ORDER BY m.tri_date DESC LIMIT ?""", (cle, PAR_PAGE_MAX))
+    # Positionnement habituel de la société par rapport au prix de référence du maître d'ouvrage
+    s["ecart_moyen"] = lire("SELECT ROUND(AVG(ecart), 2) e FROM concurrents"
+                            " WHERE cle = ? AND ecart IS NOT NULL", (cle,))[0]["e"]
     noter(request, session, "fiche société", s.get("nom", cle), len(s["marches"]), debut)
     return s
 
@@ -432,7 +464,8 @@ def api_acheteur(request: Request, session: dict = Depends(visiteur)):
         raise HTTPException(404, "Maître d'ouvrage introuvable")
     a = a[0]
     a["marches_liste"] = lire("""SELECT ref, reference, objet, attributaire, montant, nb_concurrents,
-                                 date_ouverture, statut FROM marches WHERE acheteur = ?
+                                 date_ouverture, statut, estimation, prix_reference, ecart_attributaire
+                                 FROM marches WHERE acheteur = ?
                                  ORDER BY tri_date DESC LIMIT ?""", (nom, PAR_PAGE_MAX))
     a["gagnants"] = lire("""SELECT s.nom, COUNT(*) n FROM marches m JOIN societes s ON s.cle = m.cle_attributaire
                             WHERE m.acheteur = ? GROUP BY s.nom ORDER BY n DESC LIMIT 8""", (nom,))

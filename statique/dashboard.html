@@ -448,7 +448,7 @@
   .offres-cadre { container-type: inline-size; }
   .offres { list-style: none; margin: 0; padding: 0; }
   .offres__entete, .offre { display: grid; gap: var(--e2) var(--e4); align-items: center; padding: var(--e3) var(--e5);
-    grid-template-columns: minmax(0, 1fr) 170px minmax(120px, 220px) 130px 76px; }
+    grid-template-columns: minmax(0, 1fr) 170px minmax(120px, 220px) 130px 94px; }
   .offres__entete { font-size: var(--t-xs); text-transform: uppercase; color: var(--doux); font-weight: 600;
     letter-spacing: .04em; background: var(--surface-2); border-bottom: 1px solid var(--bord); padding-block: var(--e2); }
   .offre { border-bottom: 1px solid var(--bord); }
@@ -458,6 +458,8 @@
   .offre__statut .puce { white-space: normal; }
   .offre__montant { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
   .offre__montant small { display: block; font-weight: 400; color: var(--doux); font-size: var(--t-xs); }
+  .ecart--bas { color: var(--vert); font-weight: 600; }
+  .ecart--haut { color: var(--rouge); font-weight: 600; }
   .offre__ecart { text-align: right; font-size: var(--t-s); color: var(--doux); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .offre__barre .doux { font-size: var(--t-xs); }
   .offre.est-gagnant { background: var(--vert-doux); box-shadow: inset 4px 0 0 var(--barre-gagnant); }
@@ -556,7 +558,13 @@ const LIBELLE_CONC = { attributaire: 'Attributaire', admis: 'Admis', depose: 'A 
 const puceStatut = s => `<span class="puce ${PUCE_STATUT[s] ?? ''}">${esc(LIBELLE_STATUT[s] || s || '—')}</span>`;
 const puceConc = s => `<span class="puce ${s === 'attributaire' ? 'puce--ok' : (s || '').startsWith('ecarte') ? 'puce--ko' : ''}">${
   s === 'attributaire' ? ic('check', 12) : ''}${esc(LIBELLE_CONC[s] || s || '—')}</span>`;
+const LIB_ECART = { '0': 'Gagnant sous la référence', '-10': 'Gagnant à −10 % ou moins',
+  '-20': 'Gagnant à −20 % ou moins' };
 const tiret = '<span class="doux">—</span>';
+// Écart par rapport au prix de référence : sous la référence = vert (moins cher), au-dessus = rouge.
+const ecartTexte = e => `${e > 0 ? '+' : ''}${dec(e, 1)} %`;
+const ecartHtml = e => e == null ? '' :
+  `<span class="ecart ecart--${e <= 0 ? 'bas' : 'haut'}">${ecartTexte(e)}</span>`;
 
 // ================================================================ icônes (SVG écrits à la main)
 const ICONES = {
@@ -636,7 +644,7 @@ let STATS = null, ERREUR_STATS = null, QUALITE = null;
 const VUES = {
   marches: {
     titre: 'Marchés', api: '/api/marches', fixe: {}, triDefaut: 'date',
-    filtres: ['q', 'statut', 'attributaire', 'acheteur'],
+    filtres: ['q', 'statut', 'attributaire', 'estimation', 'ecart_max', 'acheteur'],
     unite: ['marché', 'marchés'], vide: 'Aucun marché ne correspond à ces critères.',
     placeholder: 'Acheteur, objet, société, référence…',
     intro: "Résultats d'appels d'offres publics : attributaires, montants et offres des concurrents, extraits des procès-verbaux d'ouverture des plis.",
@@ -646,6 +654,7 @@ const VUES = {
       ['Infructueux', nb(S.infructueux), `${pct(S.infructueux, S.marches)} % des marchés`],
       ['Montant attribué cumulé', `${dhCourt(S.montant)} <small>DH</small>`, ''],
       ['Offres analysées', nb(S.concurrents), 'lignes de concurrents'],
+      ['Prix de référence', nb(S.avec_prix_reference), `${pct(S.avec_prix_reference, S.marches)} % des marchés`],
     ],
     id: m => 'm:' + m.ref,
     colonnes: [
@@ -656,6 +665,10 @@ const VUES = {
       { titre: 'Attributaire', tri: 'attributaire', genre: 'texte',
         rendu: m => m.attributaire ? esc(m.attributaire) : `<span class="doux">${m.infructueux ? 'Infructueux' : '—'}</span>` },
       { titre: 'Montant (DH)', tri: 'montant', num: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
+      { titre: 'Prix de réf. (DH)', titreLong: 'Prix de référence', tri: 'reference_prix', num: true, large: true,
+        rendu: m => m.prix_reference != null ? dh(m.prix_reference) : tiret },
+      { titre: 'Écart', titreLong: "Écart de l'attributaire au prix de référence", tri: 'ecart', num: true,
+        rendu: m => m.ecart_attributaire != null ? ecartHtml(m.ecart_attributaire) : tiret },
       { titre: 'Conc.', titreLong: 'Nombre de concurrents', tri: 'concurrents', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
       { titre: 'Ouverture', titreLong: "Date d'ouverture", tri: 'date', genre: 'date', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
       { titre: 'Extraction', large: true, rendu: m => puceStatut(m.statut) },
@@ -668,7 +681,8 @@ const VUES = {
       <div class="carte-ligne__bas">
         <div><span class="etiq">Attributaire</span>${m.attributaire ? esc(m.attributaire) : `<span class="doux">${m.infructueux ? 'Infructueux' : 'Non identifié'}</span>`}</div>
         <div class="carte-ligne__montant">${m.montant != null ? `${dh(m.montant)} <small>DH</small>` : tiret}
-          <span class="etiq">${nb(m.nb_concurrents)} concurrent${m.nb_concurrents > 1 ? 's' : ''}</span></div>
+          <span class="etiq">${m.ecart_attributaire != null ? `${ecartHtml(m.ecart_attributaire)} / réf. · ` : ''}${
+            nb(m.nb_concurrents)} concurrent${m.nb_concurrents > 1 ? 's' : ''}</span></div>
       </div>`,
   },
 
@@ -768,6 +782,8 @@ function normaliser(vue, brut) {
     let x = (brut[k] ?? '').toString().trim();
     if (k === 'statut' && !Object.hasOwn(LIBELLE_STATUT, x)) x = '';
     if (k === 'attributaire' && x !== '1') x = '';
+    if (k === 'estimation' && x !== '1') x = '';
+    if (k === 'ecart_max' && !Object.hasOwn(LIB_ECART, x)) x = '';
     if (x) out[k] = x.slice(0, 200);
   }
   if (v.colonnes.some(c => c.tri && c.tri === brut.tri) && brut.tri !== v.triDefaut) out.tri = brut.tri;
@@ -885,7 +901,11 @@ function htmlFiltres(v) {
         <span class="selecteur"><select class="champ" id="f-statut"><option value="">Tous les statuts</option>${
           Object.entries(LIBELLE_STATUT).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>${ic('bas', 16)}</span></div>` : ''}
       ${v.filtres.includes('attributaire') ? `<div class="groupe"><span class="groupe__lib" aria-hidden="true">Attribution</span>
-        <label class="case"><input type="checkbox" id="f-attributaire"> Avec attributaire seulement</label></div>` : ''}
+        <label class="case"><input type="checkbox" id="f-attributaire"> Avec attributaire seulement</label>
+        <label class="case"><input type="checkbox" id="f-estimation"> Avec estimation du maître d'ouvrage</label></div>` : ''}
+      ${v.filtres.includes('ecart_max') ? `<div class="groupe"><label class="groupe__lib" for="f-ecart">Écart du gagnant</label>
+        <span class="selecteur"><select class="champ" id="f-ecart"><option value="">Tous les écarts</option>${
+          Object.entries(LIB_ECART).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>${ic('bas', 16)}</span></div>` : ''}
       <div class="groupe tri-mobile"><label class="groupe__lib" for="f-tri">Trier par</label>
         <span class="selecteur"><select class="champ" id="f-tri">${optionsTri}</select>${ic('bas', 16)}</span></div>
     </div>
@@ -977,6 +997,8 @@ function lierFiltres() {
   const changer = maj => { validerRecherche(); majParams(maj); chargerResultats(); };
   $('#f-statut')?.addEventListener('change', e => changer({ statut: e.target.value, page: 1 }));
   $('#f-attributaire')?.addEventListener('change', e => changer({ attributaire: e.target.checked ? '1' : '', page: 1 }));
+  $('#f-estimation')?.addEventListener('change', e => changer({ estimation: e.target.checked ? '1' : '', page: 1 }));
+  $('#f-ecart')?.addEventListener('change', e => changer({ ecart_max: e.target.value, page: 1 }));
   $('#f-tri').addEventListener('change', e => { const [tri, sens] = e.target.value.split(':'); changer({ tri, sens, page: 1 }); });
   bouton.addEventListener('click', () => {
     const ouvert = panneau.classList.toggle('ouvert');
@@ -995,15 +1017,19 @@ function synchroniserChamps() {
   if (document.activeElement !== q) q.value = p.q;
   const st = $('#f-statut'); if (st) st.value = p.statut;
   const at = $('#f-attributaire'); if (at) at.checked = p.attributaire === '1';
+  const es = $('#f-estimation'); if (es) es.checked = p.estimation === '1';
+  const ec = $('#f-ecart'); if (ec) ec.value = p.ecart_max || '';
   $('#f-tri').value = `${p.tri}:${p.sens}`;
   const actifs = [];
   if (p.statut) actifs.push(['statut', `Statut : ${LIBELLE_STATUT[p.statut]}`, true]);
   if (p.attributaire) actifs.push(['attributaire', 'Avec attributaire', true]);
+  if (p.estimation) actifs.push(['estimation', 'Avec estimation', true]);
+  if (p.ecart_max) actifs.push(['ecart_max', LIB_ECART[p.ecart_max], false]);
   if (p.acheteur) actifs.push(['acheteur', `Maître d'ouvrage : ${p.acheteur}`, false]);
   $('#puces').innerHTML = actifs.map(([k, lib, mobile]) => `<span class="puce-filtre ${mobile ? 'seul-mobile' : ''}"><span>${esc(lib)}</span>
     <button type="button" data-retirer="${k}" aria-label="Retirer le filtre ${esc(lib)}">${ic('fermer', 16)}</button></span>`).join('');
   const compteur = $('#compteur-filtres');
-  const n = ['statut', 'attributaire', 'acheteur'].filter(k => v.filtres.includes(k) && p[k]).length;
+  const n = ['statut', 'attributaire', 'estimation', 'ecart_max', 'acheteur'].filter(k => v.filtres.includes(k) && p[k]).length;
   compteur.hidden = !n; compteur.textContent = n;
 }
 
@@ -1192,6 +1218,7 @@ function rendreMarche(m) {
   const offre = c => {
     const mt = montantOffre(c), gagne = c.statut === 'attributaire', ecarte = (c.statut || '').startsWith('ecarte');
     const ecart = mt != null && m.montant && !gagne ? (mt - m.montant) / m.montant * 100 : null;
+    const ecartRef = c.ecart;                 // écart avec le prix de référence, calculé côté serveur
     const w = mt != null && max ? Math.max(1, mt / max * 100) : 0;
     return `<li class="offre ${gagne ? 'est-gagnant' : ''} ${ecarte ? 'est-ecarte' : ''}">
       <div class="offre__nom">${gagne ? ic('coupe', 18) : ''}<span>${c.cle ? aFiche('s:' + c.cle, esc(c.nom), 'lien-discret') : esc(c.nom)}${
@@ -1200,7 +1227,9 @@ function rendreMarche(m) {
       <div class="offre__barre">${mt != null ? `<span class="jauge" aria-hidden="true"><i style="--l:${w.toFixed(1)}%"></i></span>` : '<span class="doux">Montant non lu</span>'}</div>
       <div class="offre__montant">${mt != null ? dh(mt) : tiret}${c.montant_verifie != null && c.montant_acte != null && c.montant_verifie !== c.montant_acte
         ? `<small>acte : ${dh(c.montant_acte)}</small>` : ''}</div>
-      <div class="offre__ecart">${gagne ? 'référence' : ecart == null ? '' : `<span class="sr">Écart avec l'attributaire : </span>${ecart > 0 ? '+' : ''}${dec(ecart, 1)} %`}</div>
+      <div class="offre__ecart">${ecartRef != null
+        ? `<span class="sr">Écart avec le prix de référence : </span>${ecartHtml(ecartRef)}`
+        : mt == null ? '' : gagne ? 'attributaire' : ecart == null ? '' : `<span class="sr">Écart avec l'attributaire : </span>${ecart > 0 ? '+' : ''}${dec(ecart, 1)} %`}</div>
     </li>`;
   };
   return `
@@ -1217,6 +1246,32 @@ function rendreMarche(m) {
       : `<section class="gagnant gagnant--vide"><div><p class="gagnant__lib">Attributaire</p>
           <p class="gagnant__nom">${m.infructueux ? 'Marché déclaré infructueux' : 'Attributaire non identifié dans le PV'}</p></div></section>`}
     ${m.alertes ? `<div class="alerte" role="note">${ic('alerte', 20)}<div><b>Point à vérifier</b>${esc(m.alertes)}</div></div>` : ''}
+    ${m.estimation != null || m.moyenne_offres != null ? `
+    <section class="section" aria-labelledby="titre-reference">
+      <div class="section__tete"><h3 id="titre-reference">Estimation et prix de référence</h3>
+        <p>${m.confiance_estimation === 'a_verifier'
+          ? "Consultation d'origine retrouvée sans certitude — à vérifier"
+          : "D'après l'annonce de consultation du maître d'ouvrage"}</p></div>
+      <section class="kpis kpis--compact" aria-label="Estimation et prix de référence">
+        <div class="kpi"><div class="kpi__lib">Estimation du maître d'ouvrage</div>
+          <div class="kpi__val">${m.estimation != null ? `${dh(m.estimation)} <small>DH</small>` : '—'}</div></div>
+        <div class="kpi"><div class="kpi__lib">Caution provisoire</div>
+          <div class="kpi__val">${m.caution_provisoire != null ? `${dh(m.caution_provisoire)} <small>DH</small>` : '—'}</div></div>
+        <div class="kpi"><div class="kpi__lib">Moyenne des offres</div>
+          <div class="kpi__val">${m.moyenne_offres != null ? `${dh(m.moyenne_offres)} <small>DH</small>` : '—'}</div>
+          ${m.nb_offres ? `<div class="kpi__note">${nb(m.nb_offres)} offre${m.nb_offres > 1 ? 's' : ''} retenue${m.nb_offres > 1 ? 's' : ''}</div>` : ''}</div>
+        <div class="kpi"><div class="kpi__lib">Prix de référence</div>
+          <div class="kpi__val">${m.prix_reference != null ? `${dh(m.prix_reference)} <small>DH</small>` : '—'}</div></div>
+        <div class="kpi"><div class="kpi__lib">Écart de l'attributaire</div>
+          <div class="kpi__val">${m.ecart_attributaire != null ? ecartHtml(m.ecart_attributaire) : '—'}</div></div>
+      </section>
+      <p class="section__pied">Prix de référence = (moyenne des offres + estimation) ÷ 2.${
+        m.prix_reference == null ? (m.estimation_ecartee
+          ? " Non calculé ici : l'estimation et les offres ne portent pas sur le même périmètre (marché en lots)."
+          : " Calculable dès que l'estimation et au moins une offre chiffrée sont connues.") : ''}${
+        m.montants_ecartes ? ` ${nb(m.montants_ecartes)} montant${m.montants_ecartes > 1 ? 's' : ''} hors d'échelle (chiffre mal lu) écarté${
+          m.montants_ecartes > 1 ? 's' : ''} de la moyenne.` : ''}</p>
+    </section>` : ''}
     <dl class="faits">${faits.map(([k, v]) => `<div class="fait"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
     ${(m.lots || []).length ? `<section class="section"><div class="section__tete"><h3>Attributaires par lot</h3><p>${m.lots.length} lot${m.lots.length > 1 ? 's' : ''}</p></div>
       <div class="cadre cadre--fixe"><ul class="classement">${m.lots.map(l => `<li><span><span class="doux">Lot ${esc(l.lot || '?')} · </span>${esc(l.attributaire || '—')}</span>
@@ -1225,9 +1280,10 @@ function rendreMarche(m) {
       <div class="section__tete"><h3 id="titre-offres">Comparaison des offres</h3>
         <p>${nb(conc.length)} concurrent${conc.length > 1 ? 's' : ''}${montants.length ? ` · offres de ${dh(min)} à ${dh(max)} DH` : ''}</p></div>
       ${conc.length ? `<div class="cadre cadre--fixe offres-cadre">
-        <div class="offres__entete" aria-hidden="true"><span>Concurrent</span><span>Résultat</span><span>Offre (proportion)</span><span class="num">Montant (DH)</span><span class="num">Écart</span></div>
+        <div class="offres__entete" aria-hidden="true"><span>Concurrent</span><span>Résultat</span><span>Offre (proportion)</span><span class="num">Montant (DH)</span><span class="num" title="Écart par rapport au prix de référence">Écart / réf.</span></div>
         <ol class="offres">${tries.map(offre).join('')}</ol></div>
-        <p class="section__pied">Offres classées de la moins chère à la plus chère. Barres proportionnelles au montant de l'offre (après vérification si disponible, sinon acte d'engagement). Écart calculé par rapport au montant attribué.</p>`
+        <p class="section__pied">Offres classées de la moins chère à la plus chère. Barres proportionnelles au montant de l'offre (après vérification si disponible, sinon acte d'engagement). Écart calculé par rapport au prix de référence${
+          m.prix_reference == null ? ", ou au montant attribué quand le prix de référence n'est pas connu" : ''}.</p>`
       : `<div class="cadre cadre--fixe"><div class="etat etat--compact"><p>Aucun concurrent lu dans ce PV.</p></div></div>`}
     </section>`;
 }
@@ -1237,6 +1293,8 @@ function rendreSociete(s) {
   const colonnes = [
     { titre: 'Marché', deux: true, rendu: (m, lien) => `${lien(esc(m.acheteur || ''))}<div class="sous">${esc(m.objet || '')}</div>` },
     { titre: 'Son offre (DH)', num: true, rendu: m => montantOffre(m) != null ? dh(montantOffre(m)) : tiret },
+    { titre: 'Écart / réf.', titreLong: 'Écart au prix de référence', num: true, large: true,
+      rendu: m => m.ecart != null ? ecartHtml(m.ecart) : tiret },
     { titre: 'Montant attribué (DH)', num: true, large: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
     { titre: 'Résultat', rendu: m => puceConc(m.statut_concurrent) },
     { titre: 'Attributaire', large: true, rendu: m => esc(m.attributaire || '—') },
@@ -1255,6 +1313,9 @@ function rendreSociete(s) {
       <div class="kpi"><div class="kpi__lib">Taux de réussite</div><div class="kpi__val">${t} %</div><span class="jauge" aria-hidden="true" style="height:6px"><i style="--l:${t}%;background:var(--barre-gagnant)"></i></span></div>
       <div class="kpi"><div class="kpi__lib">Montant gagné</div><div class="kpi__val" title="${dh(s.montant)} DH">${dhCourt(s.montant)} <small>DH</small></div></div>
       <div class="kpi"><div class="kpi__lib">Maîtres d'ouvrage</div><div class="kpi__val">${nb(s.acheteurs)}</div></div>
+      ${s.ecart_moyen != null ? `<div class="kpi"><div class="kpi__lib">Écart moyen au prix de référence</div>
+        <div class="kpi__val">${ecartHtml(s.ecart_moyen)}</div>
+        <div class="kpi__note">sur ses offres chiffrées</div></div>` : ''}
     </section>
     <section class="section"><div class="section__tete"><h3>Participations</h3>
       <p>${marches.length >= 100 ? 'Les 100 plus récentes' : `${nb(marches.length)} participation${marches.length > 1 ? 's' : ''}`}</p></div>
@@ -1271,6 +1332,9 @@ function rendreAcheteur(a) {
     { titre: 'Objet', deux: true, rendu: m => `<div class="sous" style="color:var(--texte-2)">${esc(m.objet || '')}</div>` },
     { titre: 'Attributaire', rendu: m => m.attributaire ? esc(m.attributaire) : tiret },
     { titre: 'Montant (DH)', num: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
+    { titre: 'Prix de réf. (DH)', num: true, large: true, rendu: m => m.prix_reference != null ? dh(m.prix_reference) : tiret },
+    { titre: 'Écart', titreLong: "Écart de l'attributaire au prix de référence", num: true,
+      rendu: m => m.ecart_attributaire != null ? ecartHtml(m.ecart_attributaire) : tiret },
     { titre: 'Conc.', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
     { titre: 'Ouverture', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
   ];

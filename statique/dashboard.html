@@ -563,6 +563,17 @@ const puceConc = s => `<span class="puce ${s === 'attributaire' ? 'puce--ok' : (
 const LIB_ECART = { '0': 'Gagnant sous la référence', '-10': 'Gagnant à −10 % ou moins',
   '-20': 'Gagnant à −20 % ou moins' };
 const tiret = '<span class="doux">—</span>';
+// La date d'ouverture vient de l'OCR : on la nuance quand elle contredit la date de publication,
+// et on montre la date de publication (sûre, venue du portail) quand elle n'a pas été lue.
+const dateOuverture = m => m.date_ouverture
+  ? (m.date_douteuse
+      ? `<span class="doux" title="Date lue sur le PV mais postérieure à la publication${
+          m.publie_le ? ` du ${esc(m.publie_le)}` : ''} : probablement mal lue">${esc(m.date_ouverture)} ?</span>`
+      : esc(m.date_ouverture))
+  : m.publie_le
+    ? `<span class="doux" title="Ouverture des plis non lue sur le PV — date de publication de l'annonce">${
+        esc(m.publie_le)} <small>(publication)</small></span>`
+    : tiret;
 // Écart par rapport au prix de référence : sous la référence = vert (moins cher), au-dessus = rouge.
 const ecartTexte = e => `${e > 0 ? '+' : ''}${dec(e, 2)} %`;
 // Au survol : le calcul complet, avec les deux montants et l'écart à quatre décimales.
@@ -678,12 +689,13 @@ const VUES = {
         rendu: m => m.ecart_attributaire != null
           ? ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.prix_reference)) : tiret },
       { titre: 'Conc.', titreLong: 'Nombre de concurrents', tri: 'concurrents', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
-      { titre: 'Ouverture', titreLong: "Date d'ouverture", tri: 'date', genre: 'date', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
+      { titre: 'Ouverture', titreLong: "Date d'ouverture des plis", tri: 'date', genre: 'date', cls: 'col-date',
+        rendu: dateOuverture },
       { titre: 'Extraction', large: true, rendu: m => puceStatut(m.statut) },
     ],
     carte: m => `
       <div class="carte-ligne__haut"><span class="mono">${esc(m.reference || m.ref)}</span>
-        <span>${m.statut !== 'ok' ? puceStatut(m.statut) + ' ' : ''}${esc(m.date_ouverture || '')}</span></div>
+        <span>${m.statut !== 'ok' ? puceStatut(m.statut) + ' ' : ''}${dateOuverture(m)}</span></div>
       <div class="carte-ligne__titre">${esc(m.acheteur || m.maitre_ouvrage || '')}</div>
       <div class="sous">${esc(m.objet || '')}</div>
       <div class="carte-ligne__bas">
@@ -1220,7 +1232,7 @@ function rendreMarche(m) {
     ['Procédure', esc(m.procedure || '—')],
     ['Catégorie', esc(m.categorie || '—')],
     ['Publié le', esc(m.publie_le || '—')],
-    ['Ouverture des plis', esc(m.date_ouverture || '—')],
+    ['Ouverture des plis', dateOuverture(m)],
     ["N° d'appel d'offres", esc(m.numero_ao || '—')],
     ['Statut de l’extraction', puceStatut(m.statut)],
     ['Source', m.lien ? `<a href="${esc(m.lien)}" target="_blank" rel="noopener">Ouvrir le PV ${ic('externe', 14)}<span class="sr"> (nouvel onglet)</span></a>` : '—'],

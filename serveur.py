@@ -371,8 +371,8 @@ def api_marches(request: Request, session: dict = Depends(visiteur)):
     filtre = " AND ".join(where)
     total = lire(f"SELECT COUNT(*) n FROM marches m WHERE {filtre}", tuple(params))[0]["n"]
     lignes = lire(f"""SELECT m.ref, m.reference, m.acheteur, m.maitre_ouvrage, m.objet, m.attributaire,
-                      m.montant, m.nb_concurrents, m.date_ouverture, m.statut, m.infructueux,
-                      m.estimation, m.prix_reference, m.ecart_attributaire
+                      m.montant, m.nb_concurrents, m.date_ouverture, m.publie_le, m.date_douteuse,
+                      m.statut, m.infructueux, m.estimation, m.prix_reference, m.ecart_attributaire
                       FROM marches m WHERE {filtre}
                       ORDER BY {colonne} IS NULL, {colonne} {sens} LIMIT ? OFFSET ?""",
                    tuple(params) + (taille, (page - 1) * taille))

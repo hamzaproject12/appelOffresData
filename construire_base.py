@@ -10,6 +10,7 @@ qu'on envoie sur Railway, jamais les fichiers JSON ni le texte OCR.
 from __future__ import annotations
 
 import csv
+import datetime
 import json
 import re
 import sqlite3
@@ -51,7 +52,7 @@ CREATE TABLE marches (
   statut TEXT, alertes TEXT, fichier TEXT, lien TEXT,
   estimation REAL, caution_provisoire REAL, confiance_estimation TEXT,
   moyenne_offres REAL, nb_offres INTEGER, prix_reference REAL, ecart_attributaire REAL,
-  montants_ecartes INTEGER, estimation_ecartee INTEGER);
+  montants_ecartes INTEGER, estimation_ecartee INTEGER, date_douteuse INTEGER);
 CREATE TABLE concurrents (
   id INTEGER PRIMARY KEY, ref TEXT, nom TEXT, cle TEXT, montant_acte REAL, montant_verifie REAL,
   statut TEXT, lots TEXT, ecart REAL);
@@ -192,12 +193,30 @@ def ecart(valeur: float | None, reference: float | None) -> float | None:
     return round((valeur - reference) / reference * 100, 2)
 
 
-def tri_date(*valeurs) -> str:
-    for v in valeurs:
-        m = re.search(r"(\d{2})/(\d{2})/(\d{4})", v or "")
-        if m:
-            return f"{m.group(3)}{m.group(2)}{m.group(1)}"
-    return ""
+def jour(valeur: str | None) -> datetime.date | None:
+    """Une date française réellement valide : « 31/09/2026 » est un chiffre mal lu, pas une date."""
+    m = re.search(r"(\d{2})/(\d{2})/(\d{4})", valeur or "")
+    if not m:
+        return None
+    j, mois, annee = (int(x) for x in m.groups())
+    try:
+        return datetime.date(annee, mois, j)
+    except ValueError:
+        return None
+
+
+def date_de_tri(ouverture: str | None, publication: str | None) -> tuple[str, int]:
+    """Clé de tri et drapeau « date douteuse ».
+
+    La date d'ouverture des plis vient de l'OCR : elle se lit parfois « 2086 » au lieu de « 2026 ».
+    La date de publication, elle, vient du portail et est sûre. Un PV ne pouvant être publié avant
+    l'ouverture des plis, une ouverture postérieure à la publication trahit une mauvaise lecture :
+    on trie alors sur la publication, sinon ces quelques marchés monopolisent la première page.
+    """
+    o, p = jour(ouverture), jour(publication)
+    douteuse = bool(ouverture) and (o is None or (p is not None and o > p + datetime.timedelta(days=1)))
+    retenue = p if douteuse and p else (o or p)
+    return (retenue.strftime("%Y%m%d") if retenue else ""), int(douteuse)
 
 
 def main() -> None:
@@ -221,6 +240,7 @@ def main() -> None:
         cle_attr = m.get("cle_attributaire") or (cle_nom(m["attributaire"]) if m.get("attributaire") else None)
 
         # Estimation du maître d'ouvrage et prix de référence
+        cle_tri, date_douteuse = date_de_tri(m.get("date_ouverture"), m.get("publie_le"))
         e = estimations.get(ref) or {}
         offres = [v for v in (offre_de(c) for c in m.get("concurrents") or []) if v]
         moyenne, nb_offres, reference, ecartes, est_hors = prix_de_reference(e.get("estimation"), offres)
@@ -229,16 +249,17 @@ def main() -> None:
         montant_attr = montant(m.get("montant")) or next(
             (offre_de(c) for c in m.get("concurrents") or [] if c.get("statut") == "attributaire"), None)
 
-        db.execute("INSERT OR REPLACE INTO marches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
+        db.execute("INSERT OR REPLACE INTO marches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
                    "?,?,?,?,?,?,?,?,?)", (
             ref, m.get("reference"), m.get("acheteur"), m.get("maitre_ouvrage"), m.get("objet"),
             m.get("numero_ao"), m.get("procedure"), m.get("categorie"), m.get("publie_le"),
-            m.get("date_ouverture"), tri_date(m.get("date_ouverture"), m.get("publie_le")),
+            m.get("date_ouverture"), cle_tri,
             m.get("attributaire"), cle_attr, montant(m.get("montant")), int(bool(m.get("infructueux"))),
             m.get("nb_concurrents") or len(m.get("concurrents") or []), m.get("statut"),
             " | ".join(m.get("alertes") or []), m.get("fichier"), m.get("lien"),
             e.get("estimation"), e.get("caution"), e.get("confiance"),
-            moyenne, nb_offres, reference, ecart(montant_attr, reference), ecartes, est_hors))
+            moyenne, nb_offres, reference, ecart(montant_attr, reference), ecartes, est_hors,
+            date_douteuse))
 
         for c in m.get("concurrents") or []:
             cle = c.get("cle") or cle_nom(c.get("nom") or "")

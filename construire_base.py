@@ -9,6 +9,7 @@ qu'on envoie sur Railway, jamais les fichiers JSON ni le texte OCR.
 """
 from __future__ import annotations
 
+import collections
 import csv
 import datetime
 import json
@@ -16,6 +17,7 @@ import re
 import sqlite3
 import sys
 import unicodedata
+from difflib import SequenceMatcher
 from pathlib import Path
 
 SOURCE = Path(sys.argv[1] if len(sys.argv) > 1 else "../resultats")
@@ -52,7 +54,8 @@ CREATE TABLE marches (
   statut TEXT, alertes TEXT, fichier TEXT, lien TEXT,
   estimation REAL, caution_provisoire REAL, confiance_estimation TEXT,
   moyenne_offres REAL, nb_offres INTEGER, prix_reference REAL, ecart_attributaire REAL,
-  montants_ecartes INTEGER, estimation_ecartee INTEGER, date_douteuse INTEGER);
+  montants_ecartes INTEGER, estimation_ecartee INTEGER, date_douteuse INTEGER,
+  montant_douteux INTEGER, versions INTEGER, principale INTEGER, groupe TEXT);
 CREATE TABLE concurrents (
   id INTEGER PRIMARY KEY, ref TEXT, nom TEXT, cle TEXT, montant_acte REAL, montant_verifie REAL,
   statut TEXT, lots TEXT, ecart REAL);
@@ -68,6 +71,8 @@ CREATE INDEX i_m_montant ON marches(montant);
 CREATE INDEX i_m_date ON marches(tri_date);
 CREATE INDEX i_m_ecart ON marches(ecart_attributaire);
 CREATE INDEX i_m_estimation ON marches(estimation);
+CREATE INDEX i_m_principale ON marches(principale);
+CREATE INDEX i_m_groupe ON marches(groupe);
 CREATE INDEX i_c_ref ON concurrents(ref);
 CREATE INDEX i_c_cle ON concurrents(cle);
 CREATE INDEX i_l_ref ON lots(ref);
@@ -100,6 +105,60 @@ def marches_source() -> list[dict]:
                              "lots": x.get("lots") or []} for x in pv.get("soumissionnaires") or []],
         })
     return sortie
+
+
+def _objet_nu(texte: str) -> str:
+    return re.sub(r"[^a-z ]", " ", sans_accents(texte or ""))
+
+
+def meme_marche(a: dict, b: dict) -> bool:
+    """Deux annonces portent-elles sur le même marché ? Même référence, même acheteur, même objet."""
+    oa, ob = _objet_nu(a.get("objet")), _objet_nu(b.get("objet"))
+    return not oa or not ob or SequenceMatcher(None, oa, ob).ratio() > 0.7
+
+
+def richesse(m: dict) -> tuple:
+    """Ce qu'une version apporte : un attributaire vaut mieux qu'un montant, qui vaut mieux qu'une liste."""
+    return ((m.get("attributaire") is not None) * 4 + (m.get("montant") is not None) * 2
+            + bool(m.get("concurrents")) + (m.get("statut") == "ok"),
+            jour(m.get("publie_le")) or datetime.date.min)
+
+
+def marquer_versions(marches: list[dict]) -> int:
+    """Le portail republie le même PV sous plusieurs identifiants — avis rectificatif, ou simple
+    remise en ligne. Les versions ne s'extraient pas toujours aussi bien : l'une donne l'attributaire
+    et les concurrents, l'autre est illisible.
+
+    On ne jette rien : toutes les annonces restent en base. La plus complète (à égalité, la plus
+    récente) est marquée « principale » — c'est elle qui apparaît dans les listes et dans les totaux.
+    Les autres restent consultables depuis sa fiche, au lecteur de juger.
+    """
+    par_cle: dict[tuple, list[dict]] = collections.defaultdict(list)
+    sans_reference = []
+    for m in marches:
+        ref = (m.get("reference") or "").strip().upper()
+        (par_cle[(ref, m.get("acheteur"))] if ref else sans_reference).append(m)
+
+    secondaires = 0
+    for lot in par_cle.values():
+        groupes: list[list[dict]] = []
+        for m in lot:
+            for g in groupes:
+                if meme_marche(g[0], m):
+                    g.append(m)
+                    break
+            else:
+                groupes.append([m])
+        for g in groupes:
+            meilleure = max(g, key=richesse)
+            for m in g:
+                m["versions"] = len(g)
+                m["groupe"] = str(meilleure.get("ref") or "")
+                m["principale"] = int(m is meilleure)
+            secondaires += len(g) - 1
+    for m in sans_reference:
+        m["versions"], m["groupe"], m["principale"] = 1, str(m.get("ref") or ""), 1
+    return secondaires
 
 
 PLAFOND = 5e9          # au-delà, c'est une erreur de lecture : on préfère ne pas afficher de montant
@@ -180,6 +239,13 @@ def prix_de_reference(estimation: float | None, offres: list[float]) -> tuple:
     return moyenne, len(retenues), round((moyenne + estimation) / 2, 2), len(ecartees), 0
 
 
+def montant_hors_echelle(montant_attr, offres: list[float], reference: float | None) -> int:
+    """Un montant attribué sans rapport avec les offres du même marché est un chiffre mal lu."""
+    repere = reference or (sorted(offres)[len(offres) // 2] if offres else None)
+    return int(bool(montant_attr and repere
+                    and not repere / ECHELLE <= montant_attr <= repere * ECHELLE))
+
+
 def ecart(valeur: float | None, reference: float | None) -> float | None:
     """Écart en % par rapport au prix de référence : négatif = moins cher que la référence.
 
@@ -230,6 +296,9 @@ def main() -> None:
     db = sqlite3.connect(CIBLE)
     db.executescript(SCHEMA)
 
+    secondaires = marquer_versions(marches)
+    if secondaires:
+        print(f"{secondaires} annonces sont des republications : consultables depuis la fiche du marché")
     estimations = estimations_connues()
     societes: dict[str, dict] = {}
     acheteurs: dict[str, dict] = {}
@@ -249,7 +318,7 @@ def main() -> None:
         montant_attr = montant(m.get("montant")) or next(
             (offre_de(c) for c in m.get("concurrents") or [] if c.get("statut") == "attributaire"), None)
 
-        db.execute("INSERT OR REPLACE INTO marches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
+        db.execute("INSERT OR REPLACE INTO marches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
                    "?,?,?,?,?,?,?,?,?)", (
             ref, m.get("reference"), m.get("acheteur"), m.get("maitre_ouvrage"), m.get("objet"),
             m.get("numero_ao"), m.get("procedure"), m.get("categorie"), m.get("publie_le"),
@@ -259,8 +328,10 @@ def main() -> None:
             " | ".join(m.get("alertes") or []), m.get("fichier"), m.get("lien"),
             e.get("estimation"), e.get("caution"), e.get("confiance"),
             moyenne, nb_offres, reference, ecart(montant_attr, reference), ecartes, est_hors,
-            date_douteuse))
+            date_douteuse, montant_hors_echelle(montant_attr, offres, reference), m.get("versions", 1),
+            m.get("principale", 1), m.get("groupe") or ref))
 
+        principale = bool(m.get("principale", 1))
         for c in m.get("concurrents") or []:
             cle = c.get("cle") or cle_nom(c.get("nom") or "")
             n_conc += 1
@@ -268,6 +339,8 @@ def main() -> None:
                        " ecart) VALUES (?,?,?,?,?,?,?,?)",
                        (ref, c.get("nom"), cle, montant(c.get("montant_acte")), montant(c.get("montant_verifie")),
                         c.get("statut"), ",".join(c.get("lots") or []), ecart(offre_de(c), reference)))
+            if not principale:
+                continue                       # une republication ne compte pas deux fois
             s = societes.setdefault(cle, {"noms": {}, "participations": 0, "gagnes": 0, "montant": 0.0,
                                           "acheteurs": set()})
             s["noms"][c.get("nom")] = s["noms"].get(c.get("nom"), 0) + 1
@@ -283,6 +356,8 @@ def main() -> None:
             db.execute("INSERT INTO lots VALUES (?,?,?,?)",
                        (ref, l.get("lot"), l.get("attributaire"), montant(l.get("montant"))))
 
+        if not principale:
+            continue
         nom_acheteur = m.get("acheteur") or m.get("maitre_ouvrage") or "—"
         a = acheteurs.setdefault(nom_acheteur, {"marches": 0, "attribues": 0, "infructueux": 0,
                                                 "montant": 0.0, "concurrents": 0})
@@ -307,10 +382,11 @@ def main() -> None:
 
     db.commit()
     db.execute("ANALYZE")
+    principales = db.execute("SELECT COUNT(*) FROM marches WHERE principale = 1").fetchone()[0]
     db.commit()
     db.close()
     taille = CIBLE.stat().st_size / 1e6
-    print(f"{CIBLE} : {len(marches)} marchés, {n_conc} concurrents, {len(societes)} sociétés, "
+    print(f"{CIBLE} : {principales} marchés ({len(marches)} annonces), {n_conc} concurrents, {len(societes)} sociétés, "
           f"{len(acheteurs)} acheteurs — {taille:.1f} Mo")
     if estimations:
         print(f"   dont {n_ref} marchés avec un prix de référence "

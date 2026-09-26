@@ -323,12 +323,17 @@ def application(request: Request):
 def stats(request: Request, session: dict = Depends(visiteur)):
     debut = time.time()
     g = lire("""SELECT COUNT(*) marches, SUM(attributaire IS NOT NULL) avec_attributaire,
-                SUM(infructueux) infructueux, COALESCE(SUM(montant),0) montant,
+                SUM(infructueux) infructueux,
+                COALESCE(SUM(CASE WHEN montant_douteux = 0 THEN montant END),0) montant,
+                SUM(montant_douteux) montants_douteux,
                 SUM(estimation IS NOT NULL) avec_estimation,
                 SUM(prix_reference IS NOT NULL) avec_prix_reference,
-                (SELECT COUNT(*) FROM concurrents) concurrents,
+                (SELECT COUNT(*) FROM concurrents c JOIN marches x ON x.ref = c.ref
+                 WHERE x.principale = 1) concurrents,
                 (SELECT COUNT(*) FROM societes) societes,
-                (SELECT COUNT(*) FROM acheteurs) acheteurs FROM marches""")[0]
+                (SELECT COUNT(*) FROM acheteurs) acheteurs,
+                (SELECT COUNT(*) FROM marches WHERE principale = 0) republications
+                FROM marches WHERE principale = 1""")[0]
     noter(request, session, "accueil", "", 1, debut)
     return {"visiteur": session["n"], **g}
 
@@ -338,7 +343,7 @@ def api_marches(request: Request, session: dict = Depends(visiteur)):
     debut = time.time()
     p = request.query_params
     page, taille = page_demandee(request)
-    where, params = ["1=1"], []
+    where, params = ["m.principale = 1"], []
     fts = expression_fts(p.get("q", ""))
     if fts:
         where.append("m.ref IN (SELECT ref FROM recherche WHERE recherche MATCH ?)")
@@ -371,7 +376,8 @@ def api_marches(request: Request, session: dict = Depends(visiteur)):
     filtre = " AND ".join(where)
     total = lire(f"SELECT COUNT(*) n FROM marches m WHERE {filtre}", tuple(params))[0]["n"]
     lignes = lire(f"""SELECT m.ref, m.reference, m.acheteur, m.maitre_ouvrage, m.objet, m.attributaire,
-                      m.montant, m.nb_concurrents, m.date_ouverture, m.publie_le, m.date_douteuse,
+                      m.montant, m.montant_douteux, m.nb_concurrents, m.date_ouverture, m.publie_le,
+                      m.date_douteuse,
                       m.statut, m.infructueux, m.estimation, m.prix_reference, m.ecart_attributaire
                       FROM marches m WHERE {filtre}
                       ORDER BY {colonne} IS NULL, {colonne} {sens} LIMIT ? OFFSET ?""",
@@ -392,6 +398,11 @@ def api_marche(ref: str, request: Request, session: dict = Depends(visiteur)):
                             " FROM concurrents WHERE ref = ?"
                             " ORDER BY montant_verifie IS NULL, montant_verifie", (ref,))
     m["lots"] = lire("SELECT lot, attributaire, montant FROM lots WHERE ref = ?", (ref,))
+    # Les autres publications du même PV : rien n'est masqué, le lecteur peut les ouvrir.
+    m["autres_versions"] = lire(
+        "SELECT ref, publie_le, statut, attributaire, montant, nb_concurrents, principale"
+        " FROM marches WHERE groupe = ? AND ref <> ? ORDER BY principale DESC, publie_le DESC",
+        (m.get("groupe") or ref, ref)) if (m.get("versions") or 1) > 1 else []
     noter(request, session, "fiche marché", f"{ref} — {(m.get('acheteur') or '')[:80]}", 1, debut)
     return m
 
@@ -428,10 +439,12 @@ def api_societe(cle: str, request: Request, session: dict = Depends(visiteur)):
                            m.date_ouverture, m.prix_reference, c.montant_acte, c.montant_verifie,
                            c.statut statut_concurrent, c.ecart
                            FROM concurrents c JOIN marches m ON m.ref = c.ref
-                           WHERE c.cle = ? ORDER BY m.tri_date DESC LIMIT ?""", (cle, PAR_PAGE_MAX))
+                           WHERE c.cle = ? AND m.principale = 1
+                           ORDER BY m.tri_date DESC LIMIT ?""", (cle, PAR_PAGE_MAX))
     # Positionnement habituel de la société par rapport au prix de référence du maître d'ouvrage
-    s["ecart_moyen"] = lire("SELECT ROUND(AVG(ecart), 2) e FROM concurrents"
-                            " WHERE cle = ? AND ecart IS NOT NULL", (cle,))[0]["e"]
+    s["ecart_moyen"] = lire("SELECT ROUND(AVG(c.ecart), 2) e FROM concurrents c"
+                            " JOIN marches m ON m.ref = c.ref"
+                            " WHERE c.cle = ? AND c.ecart IS NOT NULL AND m.principale = 1", (cle,))[0]["e"]
     noter(request, session, "fiche société", s.get("nom", cle), len(s["marches"]), debut)
     return s
 
@@ -466,11 +479,13 @@ def api_acheteur(request: Request, session: dict = Depends(visiteur)):
         raise HTTPException(404, "Maître d'ouvrage introuvable")
     a = a[0]
     a["marches_liste"] = lire("""SELECT ref, reference, objet, attributaire, montant, nb_concurrents,
-                                 date_ouverture, statut, estimation, prix_reference, ecart_attributaire
-                                 FROM marches WHERE acheteur = ?
+                                 date_ouverture, statut, estimation, prix_reference, ecart_attributaire,
+                                 montant_douteux
+                                 FROM marches WHERE acheteur = ? AND principale = 1
                                  ORDER BY tri_date DESC LIMIT ?""", (nom, PAR_PAGE_MAX))
     a["gagnants"] = lire("""SELECT s.nom, COUNT(*) n FROM marches m JOIN societes s ON s.cle = m.cle_attributaire
-                            WHERE m.acheteur = ? GROUP BY s.nom ORDER BY n DESC LIMIT 8""", (nom,))
+                            WHERE m.acheteur = ? AND m.principale = 1
+                            GROUP BY s.nom ORDER BY n DESC LIMIT 8""", (nom,))
     noter(request, session, "fiche acheteur", nom[:80], len(a["marches_liste"]), debut)
     return a
 
@@ -478,7 +493,8 @@ def api_acheteur(request: Request, session: dict = Depends(visiteur)):
 @app.get("/api/qualite")
 def api_qualite(request: Request, session: dict = Depends(visiteur)):
     debut = time.time()
-    statuts = lire("SELECT statut, COUNT(*) n FROM marches GROUP BY statut ORDER BY n DESC")
+    statuts = lire("SELECT statut, COUNT(*) n FROM marches WHERE principale = 1"
+                   " GROUP BY statut ORDER BY n DESC")
     noter(request, session, "qualité", "", len(statuts), debut)
     return {"statuts": statuts}
 

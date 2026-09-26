@@ -302,7 +302,8 @@
 
   @media (max-width: 639px) {
     .tableau { display: none; }
-    .cartes { display: grid; gap: var(--e2); }
+    /* minmax(0,1fr) : sans borne, une carte au contenu large déborde du cadre et le texte est rogné */
+    .cartes { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--e2); }
     .cadre { background: none; border: 0; box-shadow: none; overflow: visible; border-radius: 0; }
     .cadre > .etat { background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); }
   }
@@ -485,6 +486,8 @@
   .classement li > span:first-child { overflow-wrap: anywhere; font-weight: 500; }
   .classement .jauge { grid-column: 1 / -1; height: 6px; }
   .classement b { font-variant-numeric: tabular-nums; }
+  .versions { grid-template-columns: 1fr; }
+  .versions li { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
   @media (max-width: 639px) { .classement { padding: var(--e4); } }
 
   @media (prefers-reduced-motion: reduce) {
@@ -565,6 +568,10 @@ const LIB_ECART = { '0': 'Gagnant sous la référence', '-10': 'Gagnant à −10
 const tiret = '<span class="doux">—</span>';
 // La date d'ouverture vient de l'OCR : on la nuance quand elle contredit la date de publication,
 // et on montre la date de publication (sûre, venue du portail) quand elle n'a pas été lue.
+const montantAttribue = m => m.montant == null ? tiret
+  : m.montant_douteux
+    ? `<span class="doux" title="Montant sans rapport avec les offres de ce marché : chiffre probablement mal lu, exclu des totaux">${dh(m.montant)} ?</span>`
+    : dh(m.montant);
 const dateOuverture = m => m.date_ouverture
   ? (m.date_douteuse
       ? `<span class="doux" title="Date lue sur le PV mais postérieure à la publication${
@@ -670,7 +677,8 @@ const VUES = {
       ['Marchés', nb(S.marches), 'extraits de PV'],
       ['Avec attributaire', nb(S.avec_attributaire), `${pct(S.avec_attributaire, S.marches)} % des marchés`],
       ['Infructueux', nb(S.infructueux), `${pct(S.infructueux, S.marches)} % des marchés`],
-      ['Montant attribué cumulé', `${dhCourt(S.montant)} <small>DH</small>`, ''],
+      ['Montant attribué cumulé', `${dhCourt(S.montant)} <small>DH</small>`,
+       S.montants_douteux ? `${nb(S.montants_douteux)} montants illisibles exclus` : ''],
       ['Offres analysées', nb(S.concurrents), 'lignes de concurrents'],
       ['Prix de référence', nb(S.avec_prix_reference), `${pct(S.avec_prix_reference, S.marches)} % des marchés`],
     ],
@@ -682,7 +690,7 @@ const VUES = {
         rendu: m => `<div class="fort">${esc(m.acheteur || m.maitre_ouvrage || '')}</div><div class="sous">${esc(m.objet || '')}</div>` },
       { titre: 'Attributaire', tri: 'attributaire', genre: 'texte',
         rendu: m => m.attributaire ? esc(m.attributaire) : `<span class="doux">${m.infructueux ? 'Infructueux' : '—'}</span>` },
-      { titre: 'Montant (DH)', tri: 'montant', num: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
+      { titre: 'Montant (DH)', tri: 'montant', num: true, rendu: montantAttribue },
       { titre: 'Prix de réf. (DH)', titreLong: 'Prix de référence', tri: 'reference_prix', num: true, large: true,
         rendu: m => m.prix_reference != null ? dh(m.prix_reference) : tiret },
       { titre: 'Écart', titreLong: "Écart de l'attributaire au prix de référence", tri: 'ecart', num: true,
@@ -700,7 +708,7 @@ const VUES = {
       <div class="sous">${esc(m.objet || '')}</div>
       <div class="carte-ligne__bas">
         <div><span class="etiq">Attributaire</span>${m.attributaire ? esc(m.attributaire) : `<span class="doux">${m.infructueux ? 'Infructueux' : 'Non identifié'}</span>`}</div>
-        <div class="carte-ligne__montant">${m.montant != null ? `${dh(m.montant)} <small>DH</small>` : tiret}
+        <div class="carte-ligne__montant">${m.montant != null ? `${montantAttribue(m)} <small>DH</small>` : tiret}
           <span class="etiq">${m.ecart_attributaire != null
             ? `${ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.prix_reference))} / réf. · ` : ''}${
             nb(m.nb_concurrents)} concurrent${m.nb_concurrents > 1 ? 's' : ''}</span></div>
@@ -745,7 +753,8 @@ const VUES = {
     kpis: S => [
       ["Maîtres d'ouvrage", nb(S.acheteurs), ''],
       ['Marchés', nb(S.marches), 'extraits de PV'],
-      ['Montant attribué cumulé', `${dhCourt(S.montant)} <small>DH</small>`, ''],
+      ['Montant attribué cumulé', `${dhCourt(S.montant)} <small>DH</small>`,
+       S.montants_douteux ? `${nb(S.montants_douteux)} montants illisibles exclus` : ''],
     ],
     id: a => 'a:' + a.nom,
     colonnes: [
@@ -1235,6 +1244,8 @@ function rendreMarche(m) {
     ['Ouverture des plis', dateOuverture(m)],
     ["N° d'appel d'offres", esc(m.numero_ao || '—')],
     ['Statut de l’extraction', puceStatut(m.statut)],
+    ...(m.versions > 1 ? [['Publications de ce PV',
+      `${nb(m.versions)} annonces <span class="doux">— voir plus bas</span>`]] : []),
     ['Source', m.lien ? `<a href="${esc(m.lien)}" target="_blank" rel="noopener">Ouvrir le PV ${ic('externe', 14)}<span class="sr"> (nouvel onglet)</span></a>` : '—'],
   ];
   const offre = c => {
@@ -1264,7 +1275,7 @@ function rendreMarche(m) {
         <div><p class="gagnant__lib">${ic('coupe', 16)}Attributaire</p>
           <p class="gagnant__nom">${m.cle_attributaire ? aFiche('s:' + m.cle_attributaire, esc(m.attributaire), 'lien-discret') : esc(m.attributaire)}</p></div>
         <div class="gagnant__montant"><span class="gagnant__lib" style="color:var(--doux)">Montant attribué</span>
-          <b>${m.montant != null ? `${dh(m.montant)} <small>DH</small>` : '—'}</b></div></section>`
+          <b>${m.montant != null ? `${montantAttribue(m)} <small>DH</small>` : '—'}</b></div></section>`
       : `<section class="gagnant gagnant--vide"><div><p class="gagnant__lib">Attributaire</p>
           <p class="gagnant__nom">${m.infructueux ? 'Marché déclaré infructueux' : 'Attributaire non identifié dans le PV'}</p></div></section>`}
     ${m.alertes ? `<div class="alerte" role="note">${ic('alerte', 20)}<div><b>Point à vérifier</b>${esc(m.alertes)}</div></div>` : ''}
@@ -1299,6 +1310,17 @@ function rendreMarche(m) {
     ${(m.lots || []).length ? `<section class="section"><div class="section__tete"><h3>Attributaires par lot</h3><p>${m.lots.length} lot${m.lots.length > 1 ? 's' : ''}</p></div>
       <div class="cadre cadre--fixe"><ul class="classement">${m.lots.map(l => `<li><span><span class="doux">Lot ${esc(l.lot || '?')} · </span>${esc(l.attributaire || '—')}</span>
         <b>${l.montant != null ? dh(l.montant) + ' DH' : '—'}</b></li>`).join('')}</ul></div></section>` : ''}
+    ${(m.autres_versions || []).length ? `<section class="section" aria-labelledby="titre-versions">
+      <div class="section__tete"><h3 id="titre-versions">Autres publications de ce PV</h3>
+        <p>${nb(m.autres_versions.length)} annonce${m.autres_versions.length > 1 ? 's' : ''} sur le portail</p></div>
+      <div class="cadre cadre--fixe"><ul class="classement versions">${m.autres_versions.map(v => `<li>
+        <span>${aFiche('m:' + v.ref, `Publiée le ${esc(v.publie_le || '?')}`)}
+          <span class="doux"> · ${v.attributaire ? esc(v.attributaire) : 'attributaire non lu'}
+          · ${nb(v.nb_concurrents)} concurrent${v.nb_concurrents > 1 ? 's' : ''}</span></span>
+        <b>${v.montant != null ? dh(v.montant) + ' DH' : '—'}</b> ${puceStatut(v.statut)}</li>`).join('')}</ul></div>
+      <p class="section__pied">Le portail publie parfois le même PV plusieurs fois, par exemple après rectification.
+        La version affichée ici est celle dont la lecture est la plus complète ; les autres restent consultables.</p>
+    </section>` : ''}
     <section class="section" aria-labelledby="titre-offres">
       <div class="section__tete"><h3 id="titre-offres">Comparaison des offres</h3>
         <p>${nb(conc.length)} concurrent${conc.length > 1 ? 's' : ''}${montants.length ? ` · offres de ${dh(min)} à ${dh(max)} DH` : ''}</p></div>

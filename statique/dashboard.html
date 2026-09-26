@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>Marchés publics — PV</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f4e78'/%3E%3Cpath d='M8 21V13M14 21V9M20 21V16M26 21V11' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <script>
   try { const t = localStorage.getItem('pv-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
 </script>
@@ -901,8 +902,9 @@ function htmlFiltres(v) {
         <span class="selecteur"><select class="champ" id="f-statut"><option value="">Tous les statuts</option>${
           Object.entries(LIBELLE_STATUT).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>${ic('bas', 16)}</span></div>` : ''}
       ${v.filtres.includes('attributaire') ? `<div class="groupe"><span class="groupe__lib" aria-hidden="true">Attribution</span>
-        <label class="case"><input type="checkbox" id="f-attributaire"> Avec attributaire seulement</label>
-        <label class="case"><input type="checkbox" id="f-estimation"> Avec estimation du maître d'ouvrage</label></div>` : ''}
+        <label class="case"><input type="checkbox" id="f-attributaire"> Avec attributaire seulement</label></div>
+      <div class="groupe"><span class="groupe__lib" aria-hidden="true">Estimation</span>
+        <label class="case"><input type="checkbox" id="f-estimation"> Avec estimation</label></div>` : ''}
       ${v.filtres.includes('ecart_max') ? `<div class="groupe"><label class="groupe__lib" for="f-ecart">Écart du gagnant</label>
         <span class="selecteur"><select class="champ" id="f-ecart"><option value="">Tous les écarts</option>${
           Object.entries(LIB_ECART).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>${ic('bas', 16)}</span></div>` : ''}

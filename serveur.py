@@ -50,7 +50,8 @@ BASE = trouver_base()
 # Le journal vit dans son propre fichier : la base de données est remplacée à chaque mise à jour,
 # le suivi des consultations, lui, doit survivre.
 JOURNAL_BASE = Path(os.environ.get("JOURNAL") or
-                    ("/data/journal.db" if Path("/data").is_dir() else ICI / "journal.db"))
+                    ("/data/journal.db" if os.name != "nt" and Path("/data").is_dir()
+                     else ICI / "journal.db"))
 SECRET = (os.environ.get("SECRET") or secrets.token_hex(32)).encode()
 ADMIN_UTILISATEUR = os.environ.get("ADMIN_UTILISATEUR", "admin")
 ADMIN_MOTDEPASSE = os.environ.get("ADMIN_MOTDEPASSE", "")
@@ -235,6 +236,7 @@ def page_demandee(request: Request) -> tuple[int, int]:
 
 PAGE_ACCUEIL = """<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Marchés publics — accès</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f4e78'/%3E%3Cpath d='M8 21V13M14 21V9M20 21V16M26 21V11' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
  :root {{ --fond:#f6f7f9; --carte:#fff; --bord:#e2e5ea; --texte:#16191d; --doux:#6b7280; --accent:#1f4e78; }}
  @media (prefers-color-scheme: dark) {{ :root {{ --fond:#0f1216; --carte:#171b21; --bord:#262c35;

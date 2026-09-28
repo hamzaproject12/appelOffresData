@@ -566,6 +566,15 @@ const puceConc = s => `<span class="puce ${s === 'attributaire' ? 'puce--ok' : (
 const LIB_ECART = { '0': 'Gagnant sous la référence', '-10': 'Gagnant à −10 % ou moins',
   '-20': 'Gagnant à −20 % ou moins' };
 const tiret = '<span class="doux">—</span>';
+// D'où vient la fiche : la saisie du maître d'ouvrage sur le portail, ou la lecture du PV scanné.
+const SOURCE = {
+  portail: ['Portail', "Contenu saisi par le maître d'ouvrage sur le portail : noms et montants exacts"],
+  ocr: ['PV scanné', 'Lu automatiquement sur le PV scanné : des erreurs de lecture sont possibles'],
+};
+const puceSource = m => {
+  const [libelle, aide] = SOURCE[m.source] || SOURCE.ocr;
+  return `<span class="puce ${m.source === 'portail' ? 'puce--ok' : ''}" title="${esc(aide)}">${libelle}</span>`;
+};
 // La date d'ouverture vient de l'OCR : on la nuance quand elle contredit la date de publication,
 // et on montre la date de publication (sûre, venue du portail) quand elle n'a pas été lue.
 const montantAttribue = m => m.montant == null ? tiret
@@ -699,6 +708,7 @@ const VUES = {
       { titre: 'Conc.', titreLong: 'Nombre de concurrents', tri: 'concurrents', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
       { titre: 'Ouverture', titreLong: "Date d'ouverture des plis", tri: 'date', genre: 'date', cls: 'col-date',
         rendu: dateOuverture },
+      { titre: 'Source', titreLong: 'Origine des données', large: true, rendu: puceSource },
       { titre: 'Extraction', large: true, rendu: m => puceStatut(m.statut) },
     ],
     carte: m => `
@@ -1243,6 +1253,7 @@ function rendreMarche(m) {
     ['Publié le', esc(m.publie_le || '—')],
     ['Ouverture des plis', dateOuverture(m)],
     ["N° d'appel d'offres", esc(m.numero_ao || '—')],
+    ['Origine des données', puceSource(m)],
     ['Statut de l’extraction', puceStatut(m.statut)],
     ...(m.versions > 1 ? [['Publications de ce PV',
       `${nb(m.versions)} annonces <span class="doux">— voir plus bas</span>`]] : []),
@@ -1279,6 +1290,9 @@ function rendreMarche(m) {
       : `<section class="gagnant gagnant--vide"><div><p class="gagnant__lib">Attributaire</p>
           <p class="gagnant__nom">${m.infructueux ? 'Marché déclaré infructueux' : 'Attributaire non identifié dans le PV'}</p></div></section>`}
     ${m.alertes ? `<div class="alerte" role="note">${ic('alerte', 20)}<div><b>Point à vérifier</b>${esc(m.alertes)}</div></div>` : ''}
+    ${m.divergence ? `<div class="alerte" role="note">${ic('alerte', 20)}<div><b>Deux lectures divergentes</b>
+      Le portail annonce ${dh(m.montant)} DH, la lecture du PV scanné donnait ${dh(m.montant_ocr)} DH.
+      C'est le montant du portail qui est retenu.</div></div>` : ''}
     ${m.estimation != null || m.moyenne_offres != null ? `
     <section class="section" aria-labelledby="titre-reference">
       <div class="section__tete"><h3 id="titre-reference">Estimation et prix de référence</h3>
@@ -1321,6 +1335,9 @@ function rendreMarche(m) {
       <p class="section__pied">Le portail publie parfois le même PV plusieurs fois, par exemple après rectification.
         La version affichée ici est celle dont la lecture est la plus complète ; les autres restent consultables.</p>
     </section>` : ''}
+    ${m.justification ? `<section class="section"><div class="section__tete"><h3>Justification du choix de l'attributaire</h3>
+      <p>Telle qu'elle figure au procès-verbal</p></div>
+      <div class="cadre cadre--fixe" style="padding:var(--e4) var(--e5)">${esc(m.justification)}</div></section>` : ''}
     <section class="section" aria-labelledby="titre-offres">
       <div class="section__tete"><h3 id="titre-offres">Comparaison des offres</h3>
         <p>${nb(conc.length)} concurrent${conc.length > 1 ? 's' : ''}${montants.length ? ` · offres de ${dh(min)} à ${dh(max)} DH` : ''}</p></div>

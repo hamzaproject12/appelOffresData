@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import collections
 import csv
+import gzip
+import shutil
 import datetime
 import json
 import re
@@ -24,6 +26,9 @@ SOURCE = Path(sys.argv[1] if len(sys.argv) > 1 else "../resultats")
 CIBLE = Path(sys.argv[2] if len(sys.argv) > 2 else "pv.db")
 # Estimations du maître d'ouvrage, récupérées par collecter_consultations.py
 ESTIMATIONS = Path(sys.argv[3] if len(sys.argv) > 3 else "../consultations/estimations.csv")
+# Extraits de PV en HTML, récupérés par collecter_extraits.py : le PV tel que le maître d'ouvrage
+# l'a saisi dans le portail, sans OCR.
+EXTRAITS = Path(sys.argv[4] if len(sys.argv) > 4 else "../extraits")
 
 FORMES = re.compile(r"\b(ste|societe|sarl|sarlau|sa|sas|snc|au|groupement|gpt|cooperative|entreprise|ets|"
                     r"etablissements?|bureau|cabinet|group|groupe)\b")
@@ -55,10 +60,11 @@ CREATE TABLE marches (
   estimation REAL, caution_provisoire REAL, confiance_estimation TEXT,
   moyenne_offres REAL, nb_offres INTEGER, prix_reference REAL, ecart_attributaire REAL,
   montants_ecartes INTEGER, estimation_ecartee INTEGER, date_douteuse INTEGER,
-  montant_douteux INTEGER, versions INTEGER, principale INTEGER, groupe TEXT);
+  montant_douteux INTEGER, versions INTEGER, principale INTEGER, groupe TEXT,
+  source TEXT, montant_ocr REAL, divergence INTEGER, justification TEXT);
 CREATE TABLE concurrents (
   id INTEGER PRIMARY KEY, ref TEXT, nom TEXT, cle TEXT, montant_acte REAL, montant_verifie REAL,
-  statut TEXT, lots TEXT, ecart REAL);
+  statut TEXT, lots TEXT, ecart REAL, source TEXT);
 CREATE TABLE lots (ref TEXT, lot TEXT, attributaire TEXT, montant REAL);
 CREATE TABLE societes (cle TEXT PRIMARY KEY, nom TEXT, participations INTEGER, gagnes INTEGER,
   montant REAL, acheteurs INTEGER);
@@ -159,6 +165,92 @@ def marquer_versions(marches: list[dict]) -> int:
     for m in sans_reference:
         m["versions"], m["groupe"], m["principale"] = 1, str(m.get("ref") or ""), 1
     return secondaires
+
+
+def extraits_connus() -> dict[str, dict]:
+    """{refConsultation: extrait} pour les marchés dont le portail publie le PV en HTML.
+
+    Une page publiée mais sans aucun concurrent n'apporte rien : on la laisse de côté et l'OCR
+    garde la main.
+    """
+    if not EXTRAITS.is_dir():
+        print(f"(pas d'extraits HTML : {EXTRAITS} absent — tout vient de l'OCR)")
+        return {}
+    out: dict[str, dict] = {}
+    for f in EXTRAITS.glob("*.json"):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if d.get("present") and d.get("soumissionnaires"):
+            # Un marché sans PV n'a pas de référence d'annonce : on le range sous « c<consultation> ».
+            cle_extrait = str(d.get("refConsultation_pv") or "c" + str(d.get("refConsultation_annonce")))
+            out[cle_extrait] = d
+    print(f"{len(out)} extraits de PV lus dans {EXTRAITS} (données du portail, sans OCR)")
+    return out
+
+
+# « M4 / ONCA / ONCADRO - OFFICE NATIONAL… » : le portail préfixe l'acheteur d'un ou plusieurs codes
+# internes. Sans les retirer, le même organisme apparaît sous deux noms.
+PREFIXE_ORG = re.compile(r"^(?:[A-Z0-9][A-Z0-9_.\-]{0,11}\s*/\s*)+[A-Z0-9][A-Z0-9_.\-]{0,19}\s*-\s*")
+
+
+def marche_du_portail(e: dict) -> dict:
+    """Fabrique un marché à partir du seul extrait HTML.
+
+    Ces marchés n'ont jamais eu de PV téléchargeable : ils n'existent que dans le portail. Ils
+    n'ont donc ni fichier, ni OCR, ni annonce d'extrait — mais ils ont tout le contenu du PV.
+    """
+    ref = "c" + str(e.get("refConsultation_annonce"))
+    # Le portail préfixe l'acheteur de son code interne (« M4 / ENAM - ») : sans quoi le même
+    # organisme apparaîtrait deux fois, une fois préfixé et une fois non.
+    acheteur = PREFIXE_ORG.sub("", e.get("acheteur") or "").strip()
+    vide = {"ref": ref, "reference": e.get("reference"), "acheteur": acheteur or e.get("acheteur"),
+            "maitre_ouvrage": acheteur or e.get("acheteur"), "objet": e.get("objet"),
+            "categorie": e.get("categorie"), "publie_le": None,
+            "date_ouverture": (e.get("date_limite_plis") or "")[:10] or None,
+            "numero_ao": None, "fichier": None,
+            "lien": (f"https://www.marchespublics.gov.ma/index.php?page=entreprise.ExtraitPV"
+                     f"&refConsultation={e.get('refConsultation_annonce')}"
+                     f"&orgAcronyme={e.get('orgAcronyme')}"),
+            "montant": None}
+    return fusionner(vide, e)
+
+
+def fusionner(m: dict, e: dict) -> dict:
+    """Remplace ce que l'OCR avait deviné par ce que le portail affiche.
+
+    Le portail donne les noms tapés au clavier, les montants lot par lot et les sections explicites
+    du PV. On garde le montant lu par OCR à côté : s'ils divergent, mieux vaut le signaler que de
+    choisir en silence.
+    """
+    concurrents = [{"nom": c["nom"], "montant_acte": c.get("montant_acte_engagement"),
+                    "montant_verifie": c.get("montant_apres_verification"),
+                    "statut": c.get("statut"), "lots": c.get("lots") or []}
+                   for c in e["soumissionnaires"] if c.get("nom")]
+    lots = [{"lot": l.get("lot"), "attributaire": l.get("attributaire"), "montant": l.get("montant")}
+            for l in e.get("attributaires_par_lot") or []]
+    montant_portail = e.get("montant_attribue")
+    montant_ocr = montant(m.get("montant"))
+    diverge = int(bool(montant_portail and montant_ocr
+                       and abs(montant_portail - montant_ocr) > max(1.0, 0.01 * montant_portail)))
+    return {**m,
+            "attributaire": e.get("attributaire"),
+            "montant": montant_portail,
+            "montant_ocr": montant_ocr,
+            "divergence": diverge,
+            "infructueux": bool(e.get("infructueux")),
+            "nb_concurrents": e.get("nombre_soumissionnaires") or len(concurrents),
+            "concurrents": concurrents,
+            "lots": lots,
+            "procedure": e.get("procedure") or m.get("procedure"),
+            "objet": m.get("objet") or e.get("objet"),
+            "justification": e.get("justification"),
+            "statut": "ok",              # lecture certaine : ce n'est plus une extraction d'image
+            "alertes": [],               # les avertissements de l'OCR ne s'appliquent plus
+            "estimation_portail": e.get("estimation"),
+            "caution_portail": e.get("caution_provisoire"),
+            "source": "portail"}
 
 
 PLAFOND = 5e9          # au-delà, c'est une erreur de lecture : on préfère ne pas afficher de montant
@@ -299,6 +391,21 @@ def main() -> None:
     secondaires = marquer_versions(marches)
     if secondaires:
         print(f"{secondaires} annonces sont des republications : consultables depuis la fiche du marché")
+    extraits = extraits_connus()
+    if extraits:
+        fusionnes = 0
+        for i, m in enumerate(marches):
+            e = extraits.pop(str(m.get("ref")), None)
+            if e:
+                marches[i] = fusionner(m, e)
+                fusionnes += 1
+        print(f"{fusionnes} marchés lus sur le portail plutôt que par OCR "
+              f"({100 * fusionnes / max(1, len(marches)):.0f} %)")
+        inedits = [marche_du_portail(e) for e in extraits.values()
+                   if e.get("nouveau") and e.get("refConsultation_annonce")]
+        if inedits:
+            marches += inedits
+            print(f"{len(inedits)} marchés inédits ajoutés : connus du seul portail, sans PV ni OCR")
     estimations = estimations_connues()
     societes: dict[str, dict] = {}
     acheteurs: dict[str, dict] = {}
@@ -310,7 +417,11 @@ def main() -> None:
 
         # Estimation du maître d'ouvrage et prix de référence
         cle_tri, date_douteuse = date_de_tri(m.get("date_ouverture"), m.get("publie_le"))
-        e = estimations.get(ref) or {}
+        est = estimations.get(ref) or {}
+        # Le portail donne parfois l'estimation dans l'extrait lui-même : elle vaut celle du CSV.
+        e = {"estimation": est.get("estimation") or montant(m.get("estimation_portail")),
+             "caution": est.get("caution") or montant(m.get("caution_portail")),
+             "confiance": est.get("confiance") or ("portail" if m.get("estimation_portail") else None)}
         offres = [v for v in (offre_de(c) for c in m.get("concurrents") or []) if v]
         moyenne, nb_offres, reference, ecartes, est_hors = prix_de_reference(e.get("estimation"), offres)
         n_ref += reference is not None
@@ -318,7 +429,7 @@ def main() -> None:
         montant_attr = montant(m.get("montant")) or next(
             (offre_de(c) for c in m.get("concurrents") or [] if c.get("statut") == "attributaire"), None)
 
-        db.execute("INSERT OR REPLACE INTO marches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
+        db.execute("INSERT OR REPLACE INTO marches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
                    "?,?,?,?,?,?,?,?,?)", (
             ref, m.get("reference"), m.get("acheteur"), m.get("maitre_ouvrage"), m.get("objet"),
             m.get("numero_ao"), m.get("procedure"), m.get("categorie"), m.get("publie_le"),
@@ -329,16 +440,18 @@ def main() -> None:
             e.get("estimation"), e.get("caution"), e.get("confiance"),
             moyenne, nb_offres, reference, ecart(montant_attr, reference), ecartes, est_hors,
             date_douteuse, montant_hors_echelle(montant_attr, offres, reference), m.get("versions", 1),
-            m.get("principale", 1), m.get("groupe") or ref))
+            m.get("principale", 1), m.get("groupe") or ref, m.get("source", "ocr"),
+            montant(m.get("montant_ocr")), int(bool(m.get("divergence"))), m.get("justification")))
 
         principale = bool(m.get("principale", 1))
         for c in m.get("concurrents") or []:
             cle = c.get("cle") or cle_nom(c.get("nom") or "")
             n_conc += 1
             db.execute("INSERT INTO concurrents (ref, nom, cle, montant_acte, montant_verifie, statut, lots,"
-                       " ecart) VALUES (?,?,?,?,?,?,?,?)",
+                       " ecart, source) VALUES (?,?,?,?,?,?,?,?,?)",
                        (ref, c.get("nom"), cle, montant(c.get("montant_acte")), montant(c.get("montant_verifie")),
-                        c.get("statut"), ",".join(c.get("lots") or []), ecart(offre_de(c), reference)))
+                        c.get("statut"), ",".join(str(x) for x in c.get("lots") or []),
+                        ecart(offre_de(c), reference), m.get("source", "ocr")))
             if not principale:
                 continue                       # une republication ne compte pas deux fois
             s = societes.setdefault(cle, {"noms": {}, "participations": 0, "gagnes": 0, "montant": 0.0,
@@ -383,11 +496,21 @@ def main() -> None:
     db.commit()
     db.execute("ANALYZE")
     principales = db.execute("SELECT COUNT(*) FROM marches WHERE principale = 1").fetchone()[0]
+    du_portail = db.execute("SELECT COUNT(*) FROM marches WHERE source = 'portail'").fetchone()[0]
+    divergents = db.execute("SELECT COUNT(*) FROM marches WHERE divergence = 1").fetchone()[0]
     db.commit()
     db.close()
+    # La base part sur Railway dans Git : compressée, elle pèse trois fois moins.
+    archive = Path(str(CIBLE) + ".gz")
+    with open(CIBLE, "rb") as source, gzip.open(archive, "wb", compresslevel=6) as sortie:
+        shutil.copyfileobj(source, sortie)
     taille = CIBLE.stat().st_size / 1e6
+    print(f"{archive} : {archive.stat().st_size / 1e6:.1f} Mo — c'est ce fichier qui part sur Railway")
     print(f"{CIBLE} : {principales} marchés ({len(marches)} annonces), {n_conc} concurrents, {len(societes)} sociétés, "
           f"{len(acheteurs)} acheteurs — {taille:.1f} Mo")
+    if du_portail:
+        print(f"   dont {du_portail} lus sur le portail (sans OCR)"
+              + (f" — {divergents} montants en désaccord avec l'OCR" if divergents else ""))
     if estimations:
         print(f"   dont {n_ref} marchés avec un prix de référence "
               f"({100 * n_ref / max(1, len(marches)):.0f} %) — {n_hors} estimations hors d'échelle écartées")

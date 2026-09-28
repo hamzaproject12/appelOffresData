@@ -16,12 +16,14 @@ Le navigateur ne reçoit jamais le jeu de données complet : chaque requête ren
 from __future__ import annotations
 
 import base64
+import gzip
 import hashlib
 import hmac
 import json
 import os
 import re
 import secrets
+import shutil
 import sqlite3
 import time
 from collections import defaultdict, deque
@@ -34,16 +36,45 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 ICI = Path(__file__).resolve().parent
 
 
+def decompresser(cible: Path) -> None:
+    """La base voyage compressée (pv.db.gz) : décompressée, elle est trop lourde pour Git.
+
+    On la déplie au démarrage, et on recommence quand l'archive est plus récente — c'est ce qui
+    arrive à chaque déploiement d'une base mise à jour.
+    """
+    archive = Path(str(cible) + ".gz")
+    if not archive.exists():
+        archive = ICI / "pv.db.gz"
+    if not archive.exists():
+        return
+    if cible.exists() and cible.stat().st_mtime >= archive.stat().st_mtime:
+        return
+    try:
+        cible.parent.mkdir(parents=True, exist_ok=True)
+        provisoire = cible.with_name(cible.name + ".tmp")
+        with gzip.open(archive, "rb") as source, open(provisoire, "wb") as sortie:
+            shutil.copyfileobj(source, sortie)
+        for reste in (str(cible) + "-wal", str(cible) + "-shm"):
+            Path(reste).unlink(missing_ok=True)
+        os.replace(provisoire, cible)
+        print(f"[pv] base dépliée depuis {archive.name} ({archive.stat().st_size / 1e6:.0f} Mo "
+              f"compressés) vers {cible}", flush=True)
+    except OSError as e:
+        print(f"[pv] impossible de déplier {archive} : {e}", flush=True)
+
+
 def trouver_base() -> Path:
-    """La base indiquée par BASE, sinon celle posée à côté du script, sinon le volume /data (Railway)."""
+    """La base indiquée par BASE, sinon le volume /data (Railway), sinon celle posée à côté du script."""
     if os.environ.get("BASE"):
-        return Path(os.environ["BASE"])
-    if (ICI / "pv.db").exists():
-        return ICI / "pv.db"
-    volume = Path("/data/pv.db")
-    if volume.exists() or (os.name != "nt" and Path("/data").is_dir()):
-        return volume
-    return ICI / "pv.db"
+        cible = Path(os.environ["BASE"])
+    elif (ICI / "pv.db").exists():
+        cible = ICI / "pv.db"
+    elif os.name != "nt" and Path("/data").is_dir():
+        cible = Path("/data/pv.db")
+    else:
+        cible = ICI / "pv.db"
+    decompresser(cible)
+    return cible
 
 
 BASE = trouver_base()
@@ -378,7 +409,7 @@ def api_marches(request: Request, session: dict = Depends(visiteur)):
     lignes = lire(f"""SELECT m.ref, m.reference, m.acheteur, m.maitre_ouvrage, m.objet, m.attributaire,
                       m.montant, m.montant_douteux, m.nb_concurrents, m.date_ouverture, m.publie_le,
                       m.date_douteuse,
-                      m.statut, m.infructueux, m.estimation, m.prix_reference, m.ecart_attributaire
+                      m.statut, m.infructueux, m.estimation, m.prix_reference, m.ecart_attributaire, m.source
                       FROM marches m WHERE {filtre}
                       ORDER BY {colonne} IS NULL, {colonne} {sens} LIMIT ? OFFSET ?""",
                    tuple(params) + (taille, (page - 1) * taille))

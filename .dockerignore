@@ -3,3 +3,5 @@ __pycache__/
 *.db-wal
 *.db-shm
 journal.csv
+journal.db
+pv.db

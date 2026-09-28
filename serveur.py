@@ -263,6 +263,60 @@ def page_demandee(request: Request) -> tuple[int, int]:
     return page, taille
 
 
+# ------------------------------------------------------------------ filtre par année
+# Aucune plage codée en dur : on propose les années effectivement présentes dans la base, pourvu
+# qu'elles pèsent au moins PART_MIN_ANNEE des marchés (ou qu'il s'agisse de l'année en cours).
+# Tout le reste — dates douteuses (lues « 2086 » par l'OCR), marchés sans date, années résiduelles —
+# forme l'entrée « incertaine ». Les tables *_annee rangent ces marchés-là sous annee = ''.
+PART_MIN_ANNEE = 0.01
+_annees: list[dict] | None = None
+
+
+def annees() -> list[dict]:
+    """[{annee, marches}] des années proposées, la plus récente d'abord, puis « incertaine »."""
+    global _annees
+    if _annees is None:
+        lignes = lire("""SELECT CASE WHEN COALESCE(date_douteuse, 0) = 1 OR COALESCE(tri_date, '') = '' THEN ''
+                         ELSE substr(tri_date, 1, 4) END annee, COUNT(*) marches
+                         FROM marches WHERE principale = 1 GROUP BY annee""")
+        total, courante = sum(l["marches"] for l in lignes), str(datetime.now().year)
+        retenues = sorted((l for l in lignes if re.fullmatch(r"\d{4}", l["annee"]) and l["annee"] <= courante
+                           and (l["marches"] >= total * PART_MIN_ANNEE or l["annee"] == courante)),
+                          key=lambda l: l["annee"], reverse=True)
+        reste = total - sum(l["marches"] for l in retenues)
+        _annees = retenues + ([{"annee": "incertaine", "marches": reste}] if reste else [])
+    return _annees
+
+
+def annees_retenues() -> list[str]:
+    return [a["annee"] for a in annees() if a["annee"] != "incertaine"]
+
+
+def filtre_annee(annee: str | None, t: str = "m") -> tuple[str, list] | None:
+    """Clause sur la table marches (alias t). BETWEEN plutôt que substr() : l'index i_m_date sert."""
+    retenues = annees_retenues()
+    if annee in retenues:
+        return (f"{t}.tri_date BETWEEN ? AND ? AND COALESCE({t}.date_douteuse, 0) = 0",
+                [annee + "0101", annee + "1231"])
+    if annee == "incertaine":
+        if not retenues:
+            return "1=1", []
+        plages = " OR ".join([f"COALESCE({t}.tri_date, '') BETWEEN ? AND ?"] * len(retenues))
+        return (f"NOT (COALESCE({t}.date_douteuse, 0) = 0 AND ({plages}))",
+                [x for a in retenues for x in (a + "0101", a + "1231")])
+    return None
+
+
+def filtre_annee_agrege(annee: str | None) -> tuple[str, list] | None:
+    """Même découpage, sur les tables societes_annee / acheteurs_annee (alias y)."""
+    retenues = annees_retenues()
+    if annee in retenues:
+        return "y.annee = ?", [annee]
+    if annee == "incertaine":
+        return (f"y.annee NOT IN ({','.join('?' * len(retenues))})", list(retenues)) if retenues else ("1=1", [])
+    return None
+
+
 # ------------------------------------------------------------------ pages
 
 PAGE_ACCUEIL = """<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
@@ -353,20 +407,46 @@ def application(request: Request):
 @app.get("/api/stats")
 def stats(request: Request, session: dict = Depends(visiteur)):
     debut = time.time()
-    g = lire("""SELECT COUNT(*) marches, SUM(attributaire IS NOT NULL) avec_attributaire,
-                SUM(infructueux) infructueux,
-                COALESCE(SUM(CASE WHEN montant_douteux = 0 THEN montant END),0) montant,
-                SUM(montant_douteux) montants_douteux,
-                SUM(estimation IS NOT NULL) avec_estimation,
-                SUM(prix_reference IS NOT NULL) avec_prix_reference,
-                (SELECT COUNT(*) FROM concurrents c JOIN marches x ON x.ref = c.ref
-                 WHERE x.principale = 1) concurrents,
-                (SELECT COUNT(*) FROM societes) societes,
-                (SELECT COUNT(*) FROM acheteurs) acheteurs,
-                (SELECT COUNT(*) FROM marches WHERE principale = 0) republications
-                FROM marches WHERE principale = 1""")[0]
-    noter(request, session, "accueil", "", 1, debut)
-    return {"visiteur": session["n"], **g}
+    annee = request.query_params.get("annee")
+    fm = filtre_annee(annee, "m")
+    if not fm:
+        # Toutes années confondues : exactement les requêtes d'avant.
+        g = lire("""SELECT COUNT(*) marches, SUM(attributaire IS NOT NULL) avec_attributaire,
+                    SUM(infructueux) infructueux,
+                    COALESCE(SUM(CASE WHEN montant_douteux = 0 THEN montant END),0) montant,
+                    SUM(montant_douteux) montants_douteux,
+                    SUM(estimation IS NOT NULL) avec_estimation,
+                    SUM(prix_reference IS NOT NULL) avec_prix_reference,
+                    (SELECT COUNT(*) FROM concurrents c JOIN marches x ON x.ref = c.ref
+                     WHERE x.principale = 1) concurrents,
+                    (SELECT COUNT(*) FROM societes) societes,
+                    (SELECT COUNT(*) FROM acheteurs) acheteurs,
+                    (SELECT COUNT(*) FROM marches WHERE principale = 0) republications
+                    FROM marches WHERE principale = 1""")[0]
+        annee = ""
+    else:
+        fx, fy = filtre_annee(annee, "x"), filtre_annee_agrege(annee)
+        g = lire(f"""SELECT COUNT(*) marches, SUM(attributaire IS NOT NULL) avec_attributaire,
+                    SUM(infructueux) infructueux,
+                    COALESCE(SUM(CASE WHEN montant_douteux = 0 THEN montant END),0) montant,
+                    SUM(montant_douteux) montants_douteux,
+                    SUM(estimation IS NOT NULL) avec_estimation,
+                    SUM(prix_reference IS NOT NULL) avec_prix_reference,
+                    (SELECT COUNT(*) FROM concurrents c JOIN marches x ON x.ref = c.ref
+                     WHERE x.principale = 1 AND {fx[0]}) concurrents,
+                    (SELECT COUNT(DISTINCT y.cle) FROM societes_annee y WHERE {fy[0]}) societes,
+                    (SELECT COUNT(DISTINCT y.nom) FROM acheteurs_annee y WHERE {fy[0]}) acheteurs,
+                    (SELECT COUNT(*) FROM marches x WHERE x.principale = 0 AND {fx[0]}) republications
+                    FROM marches m WHERE m.principale = 1 AND {fm[0]}""",
+                 tuple(fx[1] + fy[1] + fy[1] + fx[1] + fm[1]))[0]
+    noter(request, session, "accueil", f"année {annee}" if annee else "", 1, debut)
+    return {"visiteur": session["n"], "annee": annee, **g}
+
+
+@app.get("/api/annees")
+def api_annees(request: Request, session: dict = Depends(visiteur)):
+    """Années proposées dans le menu, avec leur nombre de marchés ; la somme fait le total de la base."""
+    return annees()
 
 
 @app.get("/api/marches")
@@ -379,6 +459,10 @@ def api_marches(request: Request, session: dict = Depends(visiteur)):
     if fts:
         where.append("m.ref IN (SELECT ref FROM recherche WHERE recherche MATCH ?)")
         params.append(fts)
+    annee = filtre_annee(p.get("annee"))
+    if annee:
+        where.append(annee[0])
+        params += annee[1]
     if p.get("acheteur"):
         where.append("m.acheteur = ?")
         params.append(p["acheteur"])
@@ -452,10 +536,29 @@ def api_societes(request: Request, session: dict = Depends(visiteur)):
     colonne = tris.get(p.get("tri", "participations"), "participations")
     sens = "ASC" if p.get("sens") == "asc" else "DESC"
     filtre = " AND ".join(where)
-    total = lire(f"SELECT COUNT(*) n FROM societes WHERE {filtre}", tuple(params))[0]["n"]
-    lignes = lire(f"SELECT * FROM societes WHERE {filtre} ORDER BY {colonne} {sens} LIMIT ? OFFSET ?",
-                  tuple(params) + (taille, (page - 1) * taille))
-    noter(request, session, "recherche sociétés", p.get("q", ""), total, debut)
+    fy = filtre_annee_agrege(p.get("annee"))
+    if not fy:
+        total = lire(f"SELECT COUNT(*) n FROM societes WHERE {filtre}", tuple(params))[0]["n"]
+        lignes = lire(f"SELECT * FROM societes WHERE {filtre} ORDER BY {colonne} {sens} LIMIT ? OFFSET ?",
+                      tuple(params) + (taille, (page - 1) * taille))
+    else:
+        # Chiffres de l'exercice lus dans societes_annee. Les maîtres d'ouvrage distincts ne s'additionnent
+        # pas d'une année à l'autre : pour « incertaine », qui mêle plusieurs années sur une poignée de
+        # marchés, on les recompte.
+        if p["annee"] == "incertaine":
+            fm, pm = filtre_annee(p["annee"])
+            acheteurs = f"""(SELECT COUNT(DISTINCT m.acheteur) FROM concurrents c JOIN marches m ON m.ref = c.ref
+                            WHERE c.cle = s.cle AND m.principale = 1 AND m.acheteur <> '' AND {fm})"""
+        else:
+            acheteurs, pm = "SUM(y.acheteurs)", []
+        agrege = f"""(SELECT s.cle, s.nom, SUM(y.participations) participations, SUM(y.gagnes) gagnes,
+                     ROUND(SUM(y.montant), 2) montant, {acheteurs} acheteurs
+                     FROM societes_annee y JOIN societes s ON s.cle = y.cle WHERE {fy[0]} GROUP BY s.cle)"""
+        total = lire(f"SELECT COUNT(*) n FROM {agrege} WHERE {filtre}", tuple(pm + fy[1] + params))[0]["n"]
+        lignes = lire(f"SELECT * FROM {agrege} WHERE {filtre} ORDER BY {colonne} {sens}, nom LIMIT ? OFFSET ?",
+                      tuple(pm + fy[1] + params) + (taille, (page - 1) * taille))
+    noter(request, session, "recherche sociétés",
+          p.get("q", "") + (f" [année {p['annee']}]" if fy else ""), total, debut)
     return {"total": total, "page": page, "taille": taille, "lignes": lignes}
 
 
@@ -466,17 +569,37 @@ def api_societe(cle: str, request: Request, session: dict = Depends(visiteur)):
     if not s:
         raise HTTPException(404, "Société introuvable")
     s = s[0]
-    s["marches"] = lire("""SELECT m.ref, m.reference, m.acheteur, m.objet, m.attributaire, m.montant,
-                           m.date_ouverture, m.prix_reference, c.montant_acte, c.montant_verifie,
-                           c.statut statut_concurrent, c.ecart
-                           FROM concurrents c JOIN marches m ON m.ref = c.ref
-                           WHERE c.cle = ? AND m.principale = 1
-                           ORDER BY m.tri_date DESC LIMIT ?""", (cle, PAR_PAGE_MAX))
+    # La fiche suit le filtre d'année de la liste : mêmes chiffres des deux côtés.
+    annee = request.query_params.get("annee")
+    fm, pm = filtre_annee(annee) or ("1=1", [])
+    fy = filtre_annee_agrege(annee)
+    if fy:
+        s.update(lire(f"""SELECT COALESCE(SUM(y.participations), 0) participations,
+                          COALESCE(SUM(y.gagnes), 0) gagnes, COALESCE(ROUND(SUM(y.montant), 2), 0) montant
+                          FROM societes_annee y WHERE y.cle = ? AND {fy[0]}""", (cle, *fy[1]))[0])
+        s["acheteurs"] = lire(f"""SELECT COUNT(DISTINCT m.acheteur) n FROM concurrents c JOIN marches m ON m.ref = c.ref
+                                  WHERE c.cle = ? AND m.principale = 1 AND m.acheteur <> '' AND {fm}""",
+                              (cle, *pm))[0]["n"]
+    s["annee"] = annee if fy else ""
+    # La liste des participations est paginée : jamais tronquée en silence.
+    page, taille = page_demandee(request)
+    total = lire(f"SELECT COUNT(*) n FROM concurrents c JOIN marches m ON m.ref = c.ref"
+                 f" WHERE c.cle = ? AND m.principale = 1 AND {fm}", (cle, *pm))[0]["n"]
+    lignes = lire(f"""SELECT m.ref, m.reference, m.acheteur, m.objet, m.attributaire, m.montant,
+                      m.date_ouverture, m.prix_reference, c.montant_acte, c.montant_verifie,
+                      c.statut statut_concurrent, c.ecart
+                      FROM concurrents c JOIN marches m ON m.ref = c.ref
+                      WHERE c.cle = ? AND m.principale = 1 AND {fm}
+                      ORDER BY m.tri_date DESC, m.ref, c.rowid LIMIT ? OFFSET ?""",
+                  (cle, *pm, taille, (page - 1) * taille))
+    s["liste"] = {"total": total, "page": page, "taille": taille, "lignes": lignes, "annee": s["annee"]}
     # Positionnement habituel de la société par rapport au prix de référence du maître d'ouvrage
-    s["ecart_moyen"] = lire("SELECT ROUND(AVG(c.ecart), 2) e FROM concurrents c"
-                            " JOIN marches m ON m.ref = c.ref"
-                            " WHERE c.cle = ? AND c.ecart IS NOT NULL AND m.principale = 1", (cle,))[0]["e"]
-    noter(request, session, "fiche société", s.get("nom", cle), len(s["marches"]), debut)
+    s["ecart_moyen"] = lire(f"SELECT ROUND(AVG(c.ecart), 2) e FROM concurrents c"
+                            f" JOIN marches m ON m.ref = c.ref"
+                            f" WHERE c.cle = ? AND c.ecart IS NOT NULL AND m.principale = 1 AND {fm}",
+                            (cle, *pm))[0]["e"]
+    noter(request, session, "fiche société", s.get("nom", cle) + (f" [année {annee}]" if fy else "")
+          + (f" (page {page})" if page > 1 else ""), total, debut)
     return s
 
 
@@ -494,10 +617,19 @@ def api_acheteurs(request: Request, session: dict = Depends(visiteur)):
     colonne = tris.get(p.get("tri", "marches"), "marches")
     sens = "ASC" if p.get("sens") == "asc" else "DESC"
     filtre = " AND ".join(where)
-    total = lire(f"SELECT COUNT(*) n FROM acheteurs WHERE {filtre}", tuple(params))[0]["n"]
-    lignes = lire(f"SELECT * FROM acheteurs WHERE {filtre} ORDER BY {colonne} {sens} LIMIT ? OFFSET ?",
-                  tuple(params) + (taille, (page - 1) * taille))
-    noter(request, session, "recherche acheteurs", p.get("q", ""), total, debut)
+    table, tparams = "acheteurs", []
+    fy = filtre_annee_agrege(p.get("annee"))
+    if fy:                                 # chiffres de l'exercice, lus dans acheteurs_annee
+        table = f"""(SELECT y.nom, SUM(y.marches) marches, SUM(y.attribues) attribues,
+                     SUM(y.infructueux) infructueux, ROUND(SUM(y.montant), 2) montant,
+                     SUM(y.concurrents) concurrents
+                     FROM acheteurs_annee y WHERE {fy[0]} GROUP BY y.nom)"""
+        tparams = fy[1]
+    total = lire(f"SELECT COUNT(*) n FROM {table} WHERE {filtre}", tuple(tparams + params))[0]["n"]
+    lignes = lire(f"SELECT * FROM {table} WHERE {filtre} ORDER BY {colonne} {sens} LIMIT ? OFFSET ?",
+                  tuple(tparams + params) + (taille, (page - 1) * taille))
+    noter(request, session, "recherche acheteurs",
+          p.get("q", "") + (f" [année {p['annee']}]" if fy else ""), total, debut)
     return {"total": total, "page": page, "taille": taille, "lignes": lignes}
 
 
@@ -509,23 +641,39 @@ def api_acheteur(request: Request, session: dict = Depends(visiteur)):
     if not a:
         raise HTTPException(404, "Maître d'ouvrage introuvable")
     a = a[0]
-    a["marches_liste"] = lire("""SELECT ref, reference, objet, attributaire, montant, nb_concurrents,
-                                 date_ouverture, statut, estimation, prix_reference, ecart_attributaire,
-                                 montant_douteux
-                                 FROM marches WHERE acheteur = ? AND principale = 1
-                                 ORDER BY tri_date DESC LIMIT ?""", (nom, PAR_PAGE_MAX))
-    a["gagnants"] = lire("""SELECT s.nom, COUNT(*) n FROM marches m JOIN societes s ON s.cle = m.cle_attributaire
-                            WHERE m.acheteur = ? AND m.principale = 1
-                            GROUP BY s.nom ORDER BY n DESC LIMIT 8""", (nom,))
-    noter(request, session, "fiche acheteur", nom[:80], len(a["marches_liste"]), debut)
+    annee = request.query_params.get("annee")
+    fm, pm = filtre_annee(annee) or ("1=1", [])
+    fy = filtre_annee_agrege(annee)
+    if fy:
+        a.update(lire(f"""SELECT COALESCE(SUM(y.marches), 0) marches, COALESCE(SUM(y.attribues), 0) attribues,
+                          COALESCE(SUM(y.infructueux), 0) infructueux, COALESCE(ROUND(SUM(y.montant), 2), 0) montant,
+                          COALESCE(SUM(y.concurrents), 0) concurrents
+                          FROM acheteurs_annee y WHERE y.nom = ? AND {fy[0]}""", (nom, *fy[1]))[0])
+    a["annee"] = annee if fy else ""
+    page, taille = page_demandee(request)
+    total = lire(f"SELECT COUNT(*) n FROM marches m WHERE m.acheteur = ? AND m.principale = 1 AND {fm}",
+                 (nom, *pm))[0]["n"]
+    lignes = lire(f"""SELECT m.ref, m.reference, m.objet, m.attributaire, m.montant, m.nb_concurrents,
+                      m.date_ouverture, m.statut, m.estimation, m.prix_reference, m.ecart_attributaire,
+                      m.montant_douteux
+                      FROM marches m WHERE m.acheteur = ? AND m.principale = 1 AND {fm}
+                      ORDER BY m.tri_date DESC, m.ref LIMIT ? OFFSET ?""",
+                  (nom, *pm, taille, (page - 1) * taille))
+    a["liste"] = {"total": total, "page": page, "taille": taille, "lignes": lignes, "annee": a["annee"]}
+    a["gagnants"] = lire(f"""SELECT s.nom, COUNT(*) n FROM marches m JOIN societes s ON s.cle = m.cle_attributaire
+                            WHERE m.acheteur = ? AND m.principale = 1 AND {fm}
+                            GROUP BY s.nom ORDER BY n DESC LIMIT 8""", (nom, *pm))
+    noter(request, session, "fiche acheteur", nom[:80] + (f" [année {annee}]" if fy else "")
+          + (f" (page {page})" if page > 1 else ""), total, debut)
     return a
 
 
 @app.get("/api/qualite")
 def api_qualite(request: Request, session: dict = Depends(visiteur)):
     debut = time.time()
-    statuts = lire("SELECT statut, COUNT(*) n FROM marches WHERE principale = 1"
-                   " GROUP BY statut ORDER BY n DESC")
+    fm, pm = filtre_annee(request.query_params.get("annee")) or ("1=1", [])
+    statuts = lire(f"SELECT statut, COUNT(*) n FROM marches m WHERE m.principale = 1 AND {fm}"
+                   " GROUP BY statut ORDER BY n DESC", tuple(pm))
     noter(request, session, "qualité", "", len(statuts), debut)
     return {"statuts": statuts}
 

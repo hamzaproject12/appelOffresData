@@ -192,6 +192,8 @@
   .selecteur { position: relative; display: block; }
   .selecteur select { appearance: none; -webkit-appearance: none; padding-right: 38px; cursor: pointer; min-width: 190px; }
   .selecteur svg { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--doux); }
+  .groupe--annee .selecteur select { min-width: 210px; font-weight: 500; }
+  .groupe--annee select.actif { border-color: var(--accent); background: var(--accent-doux); color: var(--accent); }
   .panneau { display: flex; flex-wrap: wrap; gap: var(--e2) var(--e3); align-items: flex-end; }
   .groupe { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .groupe__lib { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -202,10 +204,11 @@
   .case:has(input:checked) { border-color: var(--accent); background: var(--accent-doux); color: var(--accent); font-weight: 500; }
   .case:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
   .case input:focus-visible { outline: none; }
-  .bouton-filtres { display: none; }
+  .btn.bouton-filtres { display: none; }
   .tri-mobile { display: none; }
   .compteur { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent);
     color: var(--sur-accent); font-size: var(--t-xs); font-weight: 700; display: inline-grid; place-items: center; }
+  .compteur[hidden] { display: none; }
   .puces-actives { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: var(--e2); }
   .puces-actives:empty { display: none; }
   .puce-filtre { display: inline-flex; align-items: center; gap: 2px; padding-left: 14px; min-height: 44px; max-width: 100%;
@@ -219,8 +222,10 @@
   @media (max-width: 639px) {
     .filtres { flex-wrap: wrap; align-items: stretch; }
     .recherche { flex: 1 1 0; }
+    .groupe--annee { flex-basis: 100%; }
+    .groupe--annee .selecteur select { min-width: 0; }
     .champ { font-size: 16px; }
-    .bouton-filtres { display: inline-flex; flex-shrink: 0; }
+    .btn.bouton-filtres { display: inline-flex; flex-shrink: 0; }
     .panneau { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: var(--e4);
       padding: var(--e4); background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); }
     .panneau.ouvert { display: flex; }
@@ -243,18 +248,32 @@
 
   /* résultats */
   .resultats { scroll-margin-top: calc(var(--haut-barre) + var(--e3)); }
-  .resultats__tete { display: flex; justify-content: space-between; align-items: baseline; gap: var(--e3);
+  .resultats__tete { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px var(--e3);
     min-height: 24px; margin-bottom: var(--e2); color: var(--doux); font-size: var(--t-s); }
   .resultats__tete strong { color: var(--texte); font-weight: 650; }
   #compte { outline: none; }
-  .cadre { background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m); box-shadow: var(--ombre-1);
-    overflow: hidden; transition: opacity .15s; }
+  .info-requete { text-align: right; font-variant-numeric: tabular-nums; }
+  /* overflow: clip et non hidden : hidden ferait du cadre un conteneur de défilement et casserait l'en-tête collant */
+  .cadre { position: relative; background: var(--surface); border: 1px solid var(--bord); border-radius: var(--r-m);
+    box-shadow: var(--ombre-1); overflow: hidden; overflow: clip; transition: opacity .15s; }
   .cadre.en-cours { opacity: .55; }
+  .cadre.en-cours::before { content: ''; position: absolute; inset: 0 0 auto; height: 3px; z-index: 3;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent) no-repeat; background-size: 40% 100%;
+    animation: progression 1s linear infinite; }
+  @keyframes progression { from { background-position: -60% 0; } to { background-position: 160% 0; } }
 
   .tableau { width: 100%; border-collapse: collapse; }
   .tableau th { text-align: left; font-size: var(--t-xs); font-weight: 600; color: var(--doux); text-transform: uppercase;
     letter-spacing: .04em; background: var(--surface-2); border-bottom: 1px solid var(--bord); padding: 0 var(--e3);
-    height: 44px; white-space: nowrap; }
+    height: 44px; line-height: 1.25; }
+  /* Les en-têtes passent sur deux lignes plutôt que d'élargir le tableau au-delà de son cadre */
+  .tableau th .tri { text-align: left; white-space: normal; }
+  .tableau th .tri svg { flex: none; }
+  .tableau th.num .tri { text-align: right; justify-content: flex-end; }
+  /* En-tête collant, juste sous la barre du haut (hauteur réelle mesurée en JS) ; dans la fiche, en haut du corps. */
+  .tableau thead th { position: sticky; top: var(--haut-entete, var(--haut-barre)); z-index: 2;
+    box-shadow: inset 0 -1px 0 var(--bord); }
+  .fiche .tableau thead th { top: calc(-1 * var(--e5)); }      /* le collage se fait sous la marge intérieure du corps */
   .tableau th.num { text-align: right; }
   .tri { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit;
     letter-spacing: inherit; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; }
@@ -269,12 +288,37 @@
   .tableau tbody tr:focus-within { background: var(--accent-doux); }
   .tableau td.num { white-space: nowrap; }
   .tableau .col-ref { width: 11rem; }
+  .tableau td.col-ref { overflow-wrap: normal; }
+  /* La place va d'abord à l'objet : dans la liste, un nom très long peut encore se couper, mais avec un trait
+     d'union quand le navigateur sait césurer le français. Dans la fiche, où la place ne manque pas, jamais. */
+  .tableau td.col-attr { hyphens: auto; -webkit-hyphens: auto; }
+  .fiche .tableau td.col-attr { overflow-wrap: break-word; }           /* coupure après les « / » seulement (<wbr>) */
   .tableau .col-date { width: 7.5rem; white-space: nowrap; }
   .lien-fiche { color: var(--texte); font-weight: 600; text-decoration: none; }
   .lien-fiche:hover { color: var(--accent); text-decoration: underline; }
   .fort { font-weight: 500; color: var(--texte); }
   .sous { color: var(--doux); font-size: var(--t-s); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2;
     -webkit-box-orient: vertical; overflow: hidden; }
+  /* Objet du marché (deux lignes au plus) puis maître d'ouvrage (une ligne, complet au survol) */
+  /* Pas de max-width: 0 ici : il faisait de cette colonne la variable d'ajustement (171 px à 1 280 px d'écran).
+     L'ellipse du maître d'ouvrage tient sans lui, grâce à width: 0 + min-width: 100% sur la ligne. */
+  .tableau .col-objet { width: 42%; }
+  /* Sous 1 440 px, dix colonnes à loger : marges resserrées pour laisser de la place à l'objet */
+  @media (min-width: 1024px) and (max-width: 1439px) {
+    .tableau .col-objet { width: 30%; }
+    .tableau th, .tableau td { padding-inline: var(--e2); }
+    .tableau th:first-child, .tableau td:first-child { padding-left: var(--e3); }
+    .tableau .col-ref { width: 9rem; }
+    .tableau .col-date { width: 6.5rem; }
+  }
+  .objet { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    color: var(--texte); font-weight: 400; line-height: 1.45; }
+  /* width: 0 + min-width: 100% : la ligne prend la largeur de la colonne sans l'élargir, d'où l'ellipse */
+  .objet-acheteur { display: block; width: 0; min-width: 100%; margin-top: 3px; font-size: var(--t-xs); color: var(--doux);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .col-objet .lien-fiche { font-weight: 400; }
+  .col-objet .lien-fiche:hover .objet { color: var(--accent); }
+  .carte-ligne__titre--objet { font-weight: 500; }
   .taux { display: inline-flex; align-items: center; gap: var(--e2); justify-content: flex-end; }
   .taux .jauge { width: 64px; height: 6px; }
   @media (max-width: 1023px) { .col-large { display: none; } }
@@ -378,8 +422,8 @@
   @media (max-width: 639px) { .annonces { bottom: calc(80px + env(safe-area-inset-bottom)); } }
 
   /* ================================================================ fiche */
-  dialog.fiche { border: 0; padding: 0; margin: auto; width: min(1040px, calc(100vw - 48px));
-    max-width: none; max-height: calc(100dvh - 48px); border-radius: var(--r-l); background: var(--fond);
+  dialog.fiche { border: 0; padding: 0; margin: auto; width: min(1320px, calc(100vw - 32px));
+    max-width: none; max-height: calc(100dvh - 32px); border-radius: var(--r-l); background: var(--fond);
     color: var(--texte); box-shadow: var(--ombre-3); overflow: hidden; }
   dialog.fiche[open] { display: flex; flex-direction: column; animation: apparait .18s ease-out; }
   dialog.fiche::backdrop { background: var(--voile); }
@@ -394,9 +438,24 @@
     dialog.fiche { width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
     .fiche__barre { padding: calc(var(--e1) + env(safe-area-inset-top)) var(--e2) var(--e1) var(--e4); }
     .fiche__corps { padding: var(--e4) var(--e4) calc(var(--e6) + env(safe-area-inset-bottom)); }
+    .fiche .tableau thead th { top: calc(-1 * var(--e4)); }
   }
 
   .fiche-tete { margin-bottom: var(--e5); }
+  /* Tableaux internes : le nom du marché ne se brise plus mot par mot */
+  .fiche .tableau .col-marche { width: 38%; min-width: 280px; max-width: none; white-space: normal; }
+  .fiche .tableau td.col-marche { overflow-wrap: break-word; }
+  .fiche .tableau .col-marche .objet { min-width: 280px; }
+  .fiche .tableau .col-attr { width: 16%; }
+  .fiche .tableau .col-resultat { width: 10rem; }
+  .fiche .tableau td.col-resultat { overflow-wrap: normal; }
+  .fiche .tableau .col-resultat .puce { white-space: normal; border-radius: var(--r-m); }
+  /* Période couverte par la fiche : elle suit le filtre d'année de la liste */
+  .fiche-periode { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2) var(--e3); margin-top: var(--e3); }
+  .fiche-periode .puce { font-size: var(--t-s); padding: 3px 12px; }
+  .fiche-periode .puce--annee { background: var(--accent-doux); color: var(--accent); }
+  .fiche-periode .btn { min-height: 36px; padding: 0 var(--e3); font-size: var(--t-s); }
+  .fiche-periode .selecteur select { height: 36px; min-width: 0; font-size: var(--t-s); }
   .fiche-tete__meta { display: flex; flex-wrap: wrap; gap: var(--e2); align-items: center; color: var(--doux);
     font-size: var(--t-s); margin-bottom: var(--e2); }
   .fiche-tete h2 { font-size: var(--t-xl); line-height: 1.35; font-weight: 650; letter-spacing: -.01em;
@@ -566,6 +625,14 @@ const puceConc = s => `<span class="puce ${s === 'attributaire' ? 'puce--ok' : (
 const LIB_ECART = { '0': 'Gagnant sous la référence', '-10': 'Gagnant à −10 % ou moins',
   '-20': 'Gagnant à −20 % ou moins' };
 const tiret = '<span class="doux">—</span>';
+const referenceHtml = m => `<span class="mono">${esc(m.reference || m.ref).replace(/\//g, '/<wbr>')}</span>`;
+// L'objet d'abord (deux lignes au plus), le maître d'ouvrage dessous en petit (une ligne, complet au survol).
+const objetEtAcheteur = (objet, acheteur, lien) => {
+  const o = `<span class="objet" title="${esc(objet || '')}">${objet ? esc(objet) : '<span class="doux">Objet non lu</span>'}</span>`;
+  return (lien ? lien(o) : o) + (acheteur ? `<span class="objet-acheteur" title="${esc(acheteur)}">${esc(acheteur)}</span>` : '');
+};
+const carteObjet = (objet, acheteur) => `<div class="carte-ligne__titre carte-ligne__titre--objet">${esc(objet || 'Objet non lu')}</div>${
+  acheteur ? `<div class="objet-acheteur">${esc(acheteur)}</div>` : ''}`;
 // D'où vient la fiche : la saisie du maître d'ouvrage sur le portail, ou la lecture du PV scanné.
 const SOURCE = {
   portail: ['Portail', "Contenu saisi par le maître d'ouvrage sur le portail : noms et montants exacts"],
@@ -673,17 +740,19 @@ function blocErreur(e, compact = false) {
 }
 
 // ================================================================ vues
-let STATS = null, ERREUR_STATS = null, QUALITE = null;
+// Chiffres clés et répartition qualité, mis en cache par année ('' = toutes les années).
+const STATS = {}, QUALITE = {};
+let ERREUR_STATS = null, anneeKpis = null;
 
 const VUES = {
   marches: {
     titre: 'Marchés', api: '/api/marches', fixe: {}, triDefaut: 'date',
-    filtres: ['q', 'statut', 'attributaire', 'estimation', 'ecart_max', 'acheteur'],
+    filtres: ['annee', 'q', 'statut', 'attributaire', 'estimation', 'ecart_max', 'acheteur'],
     unite: ['marché', 'marchés'], vide: 'Aucun marché ne correspond à ces critères.',
     placeholder: 'Acheteur, objet, société, référence…',
     intro: "Résultats d'appels d'offres publics : attributaires, montants et offres des concurrents, extraits des procès-verbaux d'ouverture des plis.",
     kpis: S => [
-      ['Marchés', nb(S.marches), 'extraits de PV'],
+      ['Marchés', nb(S.marches), S.annee ? periode(S.annee) : 'extraits de PV'],
       ['Avec attributaire', nb(S.avec_attributaire), `${pct(S.avec_attributaire, S.marches)} % des marchés`],
       ['Infructueux', nb(S.infructueux), `${pct(S.infructueux, S.marches)} % des marchés`],
       ['Montant attribué cumulé', `${dhCourt(S.montant)} <small>DH</small>`,
@@ -694,10 +763,10 @@ const VUES = {
     id: m => 'm:' + m.ref,
     colonnes: [
       { titre: 'Référence', tri: 'reference', genre: 'texte', cls: 'col-ref',
-        rendu: (m, lien) => lien(`<span class="mono">${esc(m.reference || m.ref)}</span>`) },
-      { titre: "Maître d'ouvrage", tri: 'acheteur', genre: 'texte', deux: true,
-        rendu: m => `<div class="fort">${esc(m.acheteur || m.maitre_ouvrage || '')}</div><div class="sous">${esc(m.objet || '')}</div>` },
-      { titre: 'Attributaire', tri: 'attributaire', genre: 'texte',
+        rendu: (m, lien) => lien(referenceHtml(m)) },
+      { titre: "Objet et maître d'ouvrage", titreLong: "Maître d'ouvrage", tri: 'acheteur', genre: 'texte', deux: true,
+        cls: 'col-objet', rendu: m => objetEtAcheteur(m.objet, m.acheteur || m.maitre_ouvrage) },
+      { titre: 'Attributaire', tri: 'attributaire', genre: 'texte', cls: 'col-attr',
         rendu: m => m.attributaire ? esc(m.attributaire) : `<span class="doux">${m.infructueux ? 'Infructueux' : '—'}</span>` },
       { titre: 'Montant (DH)', tri: 'montant', num: true, rendu: montantAttribue },
       { titre: 'Prix de réf. (DH)', titreLong: 'Prix de référence', tri: 'reference_prix', num: true, large: true,
@@ -714,8 +783,7 @@ const VUES = {
     carte: m => `
       <div class="carte-ligne__haut"><span class="mono">${esc(m.reference || m.ref)}</span>
         <span>${m.statut !== 'ok' ? puceStatut(m.statut) + ' ' : ''}${dateOuverture(m)}</span></div>
-      <div class="carte-ligne__titre">${esc(m.acheteur || m.maitre_ouvrage || '')}</div>
-      <div class="sous">${esc(m.objet || '')}</div>
+      ${carteObjet(m.objet, m.acheteur || m.maitre_ouvrage)}
       <div class="carte-ligne__bas">
         <div><span class="etiq">Attributaire</span>${m.attributaire ? esc(m.attributaire) : `<span class="doux">${m.infructueux ? 'Infructueux' : 'Non identifié'}</span>`}</div>
         <div class="carte-ligne__montant">${m.montant != null ? `${montantAttribue(m)} <small>DH</small>` : tiret}
@@ -727,11 +795,11 @@ const VUES = {
 
   societes: {
     titre: 'Sociétés', api: '/api/societes', fixe: {}, triDefaut: 'participations',
-    filtres: ['q'], unite: ['société', 'sociétés'], vide: 'Aucune société ne correspond à cette recherche.',
+    filtres: ['annee', 'q'], unite: ['société', 'sociétés'], vide: 'Aucune société ne correspond à cette recherche.',
     placeholder: 'Nom de société…',
     intro: 'Les sociétés soumissionnaires : participations, marchés remportés et montants gagnés.',
     kpis: S => [
-      ['Sociétés distinctes', nb(S.societes), ''],
+      ['Sociétés distinctes', nb(S.societes), S.annee ? `ayant concouru ${periode(S.annee)}` : ''],
       ['Offres analysées', nb(S.concurrents), 'lignes de concurrents'],
       ['Marchés attribués', nb(S.avec_attributaire), `${pct(S.avec_attributaire, S.marches)} % des marchés`],
     ],
@@ -757,12 +825,12 @@ const VUES = {
 
   acheteurs: {
     titre: "Maîtres d'ouvrage", api: '/api/acheteurs', fixe: {}, triDefaut: 'marches',
-    filtres: ['q'], unite: ["maître d'ouvrage", "maîtres d'ouvrage"], vide: "Aucun maître d'ouvrage ne correspond à cette recherche.",
+    filtres: ['annee', 'q'], unite: ["maître d'ouvrage", "maîtres d'ouvrage"], vide: "Aucun maître d'ouvrage ne correspond à cette recherche.",
     placeholder: "Nom du maître d'ouvrage…",
     intro: 'Les administrations et établissements acheteurs : volume de marchés, montants attribués et niveau de concurrence.',
     kpis: S => [
-      ["Maîtres d'ouvrage", nb(S.acheteurs), ''],
-      ['Marchés', nb(S.marches), 'extraits de PV'],
+      ["Maîtres d'ouvrage", nb(S.acheteurs), S.annee ? `actifs ${periode(S.annee)}` : ''],
+      ['Marchés', nb(S.marches), S.annee ? periode(S.annee) : 'extraits de PV'],
       ['Montant attribué cumulé', `${dhCourt(S.montant)} <small>DH</small>`,
        S.montants_douteux ? `${nb(S.montants_douteux)} montants illisibles exclus` : ''],
     ],
@@ -788,26 +856,31 @@ const VUES = {
 
   qualite: {
     titre: "Qualité de l'extraction", api: '/api/marches', fixe: { statut: 'a_verifier' }, triDefaut: 'date',
-    filtres: ['q'], unite: ['PV à vérifier', 'PV à vérifier'], vide: 'Aucun PV à vérifier ne correspond à cette recherche.',
+    filtres: ['annee', 'q'], unite: ['PV à vérifier', 'PV à vérifier'], vide: 'Aucun PV à vérifier ne correspond à cette recherche.',
     placeholder: 'Filtrer les PV à vérifier…',
     intro: "« À vérifier » signale un PV où au moins une information demande confirmation : le lien vers le PV d'origine est disponible sur chaque fiche.",
     id: m => 'm:' + m.ref,
     colonnes: [
       { titre: 'Référence', tri: 'reference', genre: 'texte', cls: 'col-ref',
-        rendu: (m, lien) => lien(`<span class="mono">${esc(m.reference || m.ref)}</span>`) },
-      { titre: "Maître d'ouvrage", tri: 'acheteur', genre: 'texte', deux: true,
-        rendu: m => `<div class="fort">${esc(m.acheteur || '')}</div><div class="sous">${esc(m.objet || '')}</div>` },
+        rendu: (m, lien) => lien(referenceHtml(m)) },
+      { titre: "Objet et maître d'ouvrage", titreLong: "Maître d'ouvrage", tri: 'acheteur', genre: 'texte', deux: true,
+        cls: 'col-objet', rendu: m => objetEtAcheteur(m.objet, m.acheteur) },
       { titre: 'Ouverture', tri: 'date', genre: 'date', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
       { titre: 'Statut', rendu: m => puceStatut(m.statut) },
     ],
     carte: m => `
       <div class="carte-ligne__haut"><span class="mono">${esc(m.reference || m.ref)}</span><span>${esc(m.date_ouverture || '')}</span></div>
-      <div class="carte-ligne__titre">${esc(m.acheteur || '')}</div>
-      <div class="sous">${esc(m.objet || '')}</div>
+      ${carteObjet(m.objet, m.acheteur)}
       <div class="carte-ligne__bas"><div>${puceStatut(m.statut)}</div>
         <div class="carte-ligne__montant">${m.montant != null ? `${dh(m.montant)} <small>DH</small>` : ''}</div></div>`,
   },
 };
+// Années proposées par le serveur (/api/annees) : celles réellement présentes dans la base, plus
+// « incertaine » qui regroupe dates douteuses, marchés sans date et années résiduelles.
+let ANNEES = null;
+const libAnnee = a => a === 'incertaine' ? 'Autres / date incertaine' : a;
+const periode = a => a === 'incertaine' ? 'à date incertaine' : `en ${a}`;
+const anneeCourante = () => ETAT.p.annee || '';
 const LIB_SENS = { texte: ['Z → A', 'A → Z'], date: ['plus récent d’abord', 'plus ancien d’abord'], num: ['décroissant', 'croissant'] };
 
 // ================================================================ état et URL
@@ -824,6 +897,7 @@ function normaliser(vue, brut) {
     if (k === 'attributaire' && x !== '1') x = '';
     if (k === 'estimation' && x !== '1') x = '';
     if (k === 'ecart_max' && !Object.hasOwn(LIB_ECART, x)) x = '';
+    if (k === 'annee' && !(ANNEES ? ANNEES.some(a => a.annee === x) : /^(\d{4}|incertaine)$/.test(x))) x = '';
     if (x) out[k] = x.slice(0, 200);
   }
   if (v.colonnes.some(c => c.tri && c.tri === brut.tri) && brut.tri !== v.triDefaut) out.tri = brut.tri;
@@ -918,7 +992,7 @@ function squelette(colonnes, n = 8) {
 }
 
 // ================================================================ rendu d'une vue
-let minuteurRecherche = null, jetonListe = 0, minuteurSquelette = null;
+let minuteurRecherche = null, jetonListe = 0;
 
 function majNav() {
   document.querySelectorAll('.onglet').forEach(a => {
@@ -932,6 +1006,8 @@ function htmlFiltres(v) {
     `<option value="${c.tri}:${s}">${esc(c.titreLong || c.titre)} — ${LIB_SENS[c.genre || 'num'][i]}</option>`)).join('');
   const aDesFiltres = v.filtres.includes('statut');
   return `
+    <div class="groupe groupe--annee"><label class="sr" for="f-annee">Année</label>
+      <span class="selecteur"><select class="champ" id="f-annee">${optionsAnnees()}</select>${ic('bas', 16)}</span></div>
     <div class="recherche"><label class="sr" for="f-q">Rechercher</label>${ic('recherche', 18)}
       <input class="champ" type="search" id="f-q" placeholder="${esc(v.placeholder)}" autocomplete="off" enterkeyhint="search" maxlength="120"></div>
     <button type="button" class="btn bouton-filtres" id="bouton-filtres" aria-expanded="false" aria-controls="panneau">
@@ -953,6 +1029,14 @@ function htmlFiltres(v) {
     <div class="puces-actives" id="puces"></div>`;
 }
 
+function optionsAnnees() {
+  const a = anneeCourante();
+  if (!ANNEES) return `<option value="">Toutes les années</option>${a ? `<option value="${esc(a)}">${esc(libAnnee(a))}</option>` : ''}`;
+  const total = ANNEES.reduce((s, x) => s + x.marches, 0);
+  return `<option value="">Toutes les années (${nb(total)})</option>${ANNEES.map(x =>
+    `<option value="${esc(x.annee)}">${esc(libAnnee(x.annee))} — ${nb(x.marches)} marché${x.marches > 1 ? 's' : ''}</option>`).join('')}`;
+}
+
 function rendreVue() {
   const v = VUES[ETAT.vue];
   clearTimeout(minuteurRecherche);
@@ -963,7 +1047,8 @@ function rendreVue() {
     <section id="kpis" class="kpis" aria-label="Chiffres clés"></section>
     <form class="filtres" id="filtres" role="search" aria-label="Rechercher et filtrer">${htmlFiltres(v)}</form>
     <section class="resultats" id="resultats" aria-labelledby="compte">
-      <div class="resultats__tete"><p id="compte" tabindex="-1" aria-live="polite">Chargement…</p></div>
+      <div class="resultats__tete"><p id="compte" tabindex="-1" aria-live="polite">Chargement…</p>
+        <p id="info-requete" class="info-requete"></p></div>
       <div class="cadre" id="zone"></div>
     </section>`;
   rendreKpis();
@@ -975,40 +1060,44 @@ function rendreVue() {
 function rendreKpis() {
   const el = $('#kpis'); if (!el) return;
   const v = VUES[ETAT.vue];
+  anneeKpis = anneeCourante();
   if (ETAT.vue === 'qualite') return rendreRepartition(el);
-  if (!STATS) {
-    if (ERREUR_STATS) {
+  const S = STATS[anneeKpis];
+  if (!S) {
+    if (ERREUR_STATS?.annee === anneeKpis) {
       el.innerHTML = `<div class="kpi" style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <span class="doux">Chiffres clés indisponibles pour le moment.</span>
         <button type="button" class="btn" id="reessayer-stats">${ic('rafraichir', 18)}Réessayer</button></div>`;
       $('#reessayer-stats').onclick = chargerStats;
     } else {
+      chargerStats();
       el.innerHTML = Array.from({ length: v.kpis({}).length }, () =>
         `<div class="kpi" aria-hidden="true"><span class="sq sq--fin" style="width:60%"></span><span class="sq sq--gros" style="width:45%;margin-top:10px"></span></div>`).join('');
     }
     return;
   }
-  el.innerHTML = v.kpis(STATS).map(([lib, val, note]) =>
+  el.innerHTML = v.kpis(S).map(([lib, val, note]) =>
     `<div class="kpi"><div class="kpi__lib">${lib}</div><div class="kpi__val">${val}</div>${note ? `<div class="kpi__note">${note}</div>` : ''}</div>`).join('');
 }
 
 async function rendreRepartition(el) {
   el.className = 'repartition';
-  if (!QUALITE) {
+  const annee = anneeCourante();
+  if (!QUALITE[annee]) {
     el.innerHTML = `<span class="sq" style="width:30%"></span><span class="sq" style="height:14px;margin-top:20px"></span>
       <span class="sq sq--fin" style="width:70%;margin-top:24px"></span>`;
-    try { QUALITE = await api('/api/qualite'); }
+    try { QUALITE[annee] = await api('/api/qualite', { annee }); }
     catch (e) {
       if (e.type === 'session' || !el.isConnected) return;
       el.innerHTML = blocErreur(e, true);
       el.querySelector('[data-action=reessayer]').onclick = () => rendreRepartition(el);
       return;
     }
-    if (!el.isConnected) return;
+    if (!el.isConnected || annee !== anneeCourante()) return;
   }
-  const statuts = QUALITE.statuts || [], total = statuts.reduce((a, s) => a + s.n, 0);
+  const statuts = QUALITE[annee].statuts || [], total = statuts.reduce((a, s) => a + s.n, 0);
   const couleur = s => Object.hasOwn(LIBELLE_STATUT, s) ? `var(--s-${s})` : 'var(--s-annule)';
-  el.innerHTML = `<h2>Répartition des ${nb(total)} PV par statut d'extraction</h2>
+  el.innerHTML = `<h2>Répartition des ${nb(total)} PV par statut d'extraction${annee ? ` (${periode(annee)})` : ''}</h2>
     <div class="repartition__barre" role="img" aria-label="${esc(statuts.map(s => `${LIBELLE_STATUT[s.statut] || s.statut} : ${dec(s.n / total * 100, 1)} %`).join(', '))}">${
       statuts.map(s => `<i style="--c:${couleur(s.statut)};flex-grow:${s.n}"></i>`).join('')}</div>
     <ul class="legende">${statuts.map(s => `<li><span class="pastille" style="--c:${couleur(s.statut)}"></span>
@@ -1036,6 +1125,7 @@ function lierFiltres() {
     if (matchMedia('(max-width: 639px)').matches) q.blur();
   });
   const changer = maj => { validerRecherche(); majParams(maj); chargerResultats(); };
+  $('#f-annee').addEventListener('change', e => changer({ annee: e.target.value, page: 1 }));
   $('#f-statut')?.addEventListener('change', e => changer({ statut: e.target.value, page: 1 }));
   $('#f-attributaire')?.addEventListener('change', e => changer({ attributaire: e.target.checked ? '1' : '', page: 1 }));
   $('#f-estimation')?.addEventListener('change', e => changer({ estimation: e.target.checked ? '1' : '', page: 1 }));
@@ -1056,12 +1146,16 @@ function synchroniserChamps() {
   const v = VUES[ETAT.vue], p = params();
   const q = $('#f-q'); if (!q) return;
   if (document.activeElement !== q) q.value = p.q;
+  const an = $('#f-annee');
+  if (an) { an.value = p.annee || ''; an.classList.toggle('actif', !!p.annee); }
+  if (anneeKpis !== null && anneeKpis !== (p.annee || '')) rendreKpis();      // les chiffres clés suivent l'année
   const st = $('#f-statut'); if (st) st.value = p.statut;
   const at = $('#f-attributaire'); if (at) at.checked = p.attributaire === '1';
   const es = $('#f-estimation'); if (es) es.checked = p.estimation === '1';
   const ec = $('#f-ecart'); if (ec) ec.value = p.ecart_max || '';
   $('#f-tri').value = `${p.tri}:${p.sens}`;
   const actifs = [];
+  if (p.annee) actifs.push(['annee', p.annee === 'incertaine' ? 'Autres années / date incertaine' : `Année ${p.annee}`, false]);
   if (p.statut) actifs.push(['statut', `Statut : ${LIBELLE_STATUT[p.statut]}`, true]);
   if (p.attributaire) actifs.push(['attributaire', 'Avec attributaire', true]);
   if (p.estimation) actifs.push(['estimation', 'Avec estimation', true]);
@@ -1077,33 +1171,51 @@ function synchroniserChamps() {
 async function chargerResultats({ focus } = {}) {
   const v = VUES[ETAT.vue], zone = $('#zone'), compte = $('#compte');
   if (!zone) return;
-  const moi = ++jetonListe, p = params();
-  clearTimeout(minuteurSquelette);
+  const moi = ++jetonListe, p = params(), depart = performance.now();
   zone.setAttribute('aria-busy', 'true');
-  if (zone.dataset.rempli !== '1') zone.innerHTML = squelette(v.colonnes);
-  else {
-    zone.classList.add('en-cours');             // on grise d'abord, le squelette n'apparaît que si c'est lent
-    minuteurSquelette = setTimeout(() => { if (moi === jetonListe) { zone.classList.remove('en-cours'); zone.innerHTML = squelette(v.colonnes); } }, 300);
-  }
-  compte.textContent = 'Chargement…';
+  // Premier affichage : squelette. Ensuite, les anciennes lignes restent visibles, grisées, jusqu'à la réponse.
+  if (zone.dataset.rempli !== '1') { zone.innerHTML = squelette(v.colonnes); compte.textContent = 'Chargement…'; }
+  else zone.classList.add('en-cours');
+  $('#info-requete').textContent = 'Mise à jour…';
   const requete = { ...v.fixe, tri: p.tri, sens: p.sens, page: p.page, taille: TAILLE };
   v.filtres.forEach(k => { requete[k] = p[k]; });
   try {
     const r = await api(v.api, requete);
     if (moi !== jetonListe) return;
-    rendreResultats(v, r, p, focus);
+    rendreResultats(v, r, p, focus, performance.now() - depart);
   } catch (e) {
     if (moi !== jetonListe || e.type === 'session') return;
     zone.innerHTML = blocErreur(e); zone.dataset.rempli = '0';
     compte.textContent = 'Résultats indisponibles';
-    zone.querySelector('[data-action=reessayer]').onclick = () => { if (!STATS) chargerStats(); chargerResultats(); };
+    $('#info-requete').textContent = '';
+    zone.querySelector('[data-action=reessayer]').onclick = () => { if (!STATS[anneeCourante()]) chargerStats(); chargerResultats(); };
   } finally {
-    if (moi === jetonListe) { clearTimeout(minuteurSquelette); zone.removeAttribute('aria-busy'); zone.classList.remove('en-cours'); }
+    if (moi === jetonListe) { zone.removeAttribute('aria-busy'); zone.classList.remove('en-cours'); }
   }
 }
 
-function rendreResultats(v, r, p, focus) {
+// Mêmes boutons pour la liste principale et pour les listes internes des fiches (attribut différent).
+const paginationHtml = (page, pages, info, attr = 'data-page') => `<nav class="pagination" aria-label="Pagination">
+  <button type="button" class="btn" ${attr}="${page - 1}" ${page <= 1 ? 'disabled' : ''} aria-label="Page précédente">${ic('gauche', 18)}<span class="btn__texte">Précédente</span></button>
+  <span class="pagination__info">${info}</span>
+  <button type="button" class="btn" ${attr}="${page + 1}" ${page >= pages ? 'disabled' : ''} aria-label="Page suivante"><span class="btn__texte">Suivante</span>${ic('droite', 18)}</button>
+</nav>`;
+
+// Ce sur quoi porte la liste affichée, en clair.
+function filtresActifs(v, p) {
+  const lib = {
+    annee: x => x === 'incertaine' ? 'date incertaine' : x, q: x => `« ${x} »`, statut: x => LIBELLE_STATUT[x],
+    attributaire: () => 'avec attributaire', estimation: () => 'avec estimation', ecart_max: x => LIB_ECART[x],
+    acheteur: () => "un maître d'ouvrage",
+  };
+  return v.filtres.filter(k => p[k]).map(k => lib[k](p[k]));
+}
+
+function rendreResultats(v, r, p, focus, duree) {
   const zone = $('#zone'), compte = $('#compte');
+  const actifs = filtresActifs(v, p);
+  $('#info-requete').textContent = `${actifs.length ? 'Filtré : ' + actifs.join(' · ') : 'Aucun filtre'}${
+    duree != null ? ` — réponse en ${dec(duree / 1000, 2)} s` : ''}`;
   const pages = Math.max(1, Math.ceil(r.total / TAILLE));
   compte.innerHTML = r.total
     ? `<strong>${nb(r.total)}</strong> ${r.total > 1 ? v.unite[1] : v.unite[0]}${pages > 1 ? ` · page ${nb(p.page)} sur ${nb(pages)}` : ''}`
@@ -1127,11 +1239,7 @@ function rendreResultats(v, r, p, focus) {
   }
   const legende = `Liste des ${v.unite[1]}, triée par ${(v.colonnes.find(c => c.tri === p.tri)?.titreLong || v.colonnes.find(c => c.tri === p.tri)?.titre || '').toLowerCase()}, ordre ${p.sens === 'asc' ? 'croissant' : 'décroissant'}`;
   zone.innerHTML = tableHtml(v.colonnes, r.lignes, v.id, p, legende) + cartesHtml(v.carte, r.lignes, v.id) +
-    (pages > 1 ? `<nav class="pagination" aria-label="Pagination">
-      <button type="button" class="btn" data-page="${p.page - 1}" ${p.page <= 1 ? 'disabled' : ''} aria-label="Page précédente">${ic('gauche', 18)}<span class="btn__texte">Précédente</span></button>
-      <span class="pagination__info">Page ${nb(p.page)} / ${nb(pages)}</span>
-      <button type="button" class="btn" data-page="${p.page + 1}" ${p.page >= pages ? 'disabled' : ''} aria-label="Page suivante"><span class="btn__texte">Suivante</span>${ic('droite', 18)}</button>
-    </nav>` : '');
+    (pages > 1 ? paginationHtml(p.page, pages, `Page ${nb(p.page)} / ${nb(pages)}`) : '');
   zone.dataset.rempli = '1';
   zone.querySelectorAll('.tri').forEach(b => b.onclick = () => {
     const c = v.colonnes.find(x => x.tri === b.dataset.tri);
@@ -1167,9 +1275,16 @@ let jetonFiche = 0, fermetureInterne = false;
 
 const FICHES = {
   m: { type: 'Marché', charger: ref => api('/api/marche/' + encodeURIComponent(ref)), rendu: rendreMarche },
-  s: { type: 'Société', charger: cle => api('/api/societe/' + encodeURIComponent(cle)), rendu: rendreSociete },
-  a: { type: "Maître d'ouvrage", charger: nom => api('/api/acheteur', { nom }), rendu: rendreAcheteur },
+  s: { type: 'Société', rendu: rendreSociete,
+       charger: (cle, page = 1) => api('/api/societe/' + encodeURIComponent(cle), { page, taille: TAILLE, annee: anneeFiche }) },
+  a: { type: "Maître d'ouvrage", rendu: rendreAcheteur,
+       charger: (nom, page = 1) => api('/api/acheteur', { nom, page, taille: TAILLE, annee: anneeFiche }) },
 };
+let LISTE_FICHE = null;             // { type, cle } de la fiche dont la liste interne est paginée
+// Les fiches Société et Maître d'ouvrage suivent l'année de la liste d'où on les ouvre ; le lecteur
+// peut en changer dans la fiche. Le choix vaut pour les fiches qu'il ouvre ensuite depuis celle-ci.
+let anneeFiche = '';
+let retourListe = null;             // { y, id } : position de la liste et ligne d'origine, restaurées à la fermeture
 
 function squeletteFiche() {
   return `<p class="sr">Chargement de la fiche…</p><div aria-hidden="true">
@@ -1185,13 +1300,18 @@ async function ouvrirFiche(id, { mode = 'push' } = {}) {
   const f = FICHES[type];
   ETAT.fiche = id;
   if (mode === 'push') { profondeur++; ecrireURL('push'); }
-  if (!dlg.open) { dlg.showModal(); document.documentElement.classList.add('fiche-ouverte'); }
+  if (!dlg.open) {
+    anneeFiche = anneeCourante();
+    retourListe = { y: scrollY, id };
+    dlg.showModal(); document.documentElement.classList.add('fiche-ouverte');
+  }
   $('#fiche-type').textContent = f.type;
   $('#fiche-retour').hidden = profondeur < 2;
   ficheCorps.setAttribute('aria-busy', 'true');
   ficheCorps.innerHTML = squeletteFiche();
   ficheCorps.scrollTop = 0;
   const moi = ++jetonFiche;
+  LISTE_FICHE = { type, cle };
   try {
     const d = await f.charger(cle);
     if (moi !== jetonFiche) return;
@@ -1214,6 +1334,14 @@ function fermerFicheSansHistorique() {
 }
 dlg.addEventListener('close', () => {
   document.documentElement.classList.remove('fiche-ouverte');
+  // En se fermant, la fiche rend le focus au dernier élément actif (souvent le champ de recherche, en haut) :
+  // le navigateur y fait défiler la page. On revient à la position de la liste et à la ligne ouverte.
+  const r = retourListe; retourListe = null;
+  if (r) requestAnimationFrame(() => {
+    if (dlg.open) return;
+    scrollTo(0, r.y);
+    main.querySelector(`a[data-fiche="${CSS.escape(r.id)}"]`)?.focus({ preventScroll: true });
+  });
   document.body.appendChild(zoneAnnonces);
   document.title = `${VUES[ETAT.vue].titre} — Marchés publics`;
   if (fermetureInterne) { fermetureInterne = false; return; }
@@ -1223,13 +1351,36 @@ dlg.addEventListener('close', () => {
   else { ETAT.fiche = null; ecrireURL('replace'); }
 });
 $('#fiche-fermer').addEventListener('click', () => dlg.close());
+dlg.addEventListener('change', e => { if (e.target.matches('[data-fiche-periode]')) changerAnneeFiche(e.target.value); });
+function changerAnneeFiche(annee) {
+  if (!ETAT.fiche || annee === anneeFiche) return;
+  anneeFiche = annee;
+  ouvrirFiche(ETAT.fiche, { mode: 'aucun' });
+}
+// En-tête des fiches Société et Maître d'ouvrage : la période couverte, et de quoi en changer.
+function periodeFicheHtml(d) {
+  const a = d.annee || '';
+  const options = `<option value="">Toutes les années</option>${(ANNEES || []).map(x =>
+    `<option value="${esc(x.annee)}"${x.annee === a ? ' selected' : ''}>${esc(libAnnee(x.annee))}</option>`).join('')}`;
+  return `<div class="fiche-periode">
+    <span class="puce ${a ? 'puce--annee' : ''}">${a ? (a === 'incertaine' ? 'Autres années / date incertaine' : `Exercice ${esc(a)}`) : 'Toutes années confondues'}</span>
+    ${a ? `<button type="button" class="btn" data-fiche-annee="">${ic('rafraichir', 16)}Voir toutes les années</button>` : ''}
+    <span class="selecteur"><label class="sr" for="fiche-periode">Période de la fiche</label>
+      <select class="champ" id="fiche-periode" data-fiche-periode>${options}</select>${ic('bas', 14)}</span>
+  </div>`;
+}
 $('#fiche-retour').addEventListener('click', () => history.back());
 dlg.addEventListener('click', e => {
   if (e.target === dlg) { dlg.close(); return; }                 // clic sur le fond
+  const pg = e.target.closest('[data-liste-page]');
+  if (pg) { pageListeFiche(+pg.dataset.listePage); return; }
+  const fa = e.target.closest('[data-fiche-annee]');
+  if (fa) { changerAnneeFiche(fa.dataset.ficheAnnee); return; }
   const b = e.target.closest('[data-action="voir-marches"]');
   if (b) {
+    retourListe = null;                                          // on part vers une autre liste : pas de retour
     fermerFicheSansHistorique();
-    ETAT.vue = 'marches'; ETAT.p = normaliser('marches', { acheteur: b.dataset.nom }); memoire.marches = ETAT.p;
+    ETAT.vue = 'marches'; ETAT.p = normaliser('marches', { acheteur: b.dataset.nom, annee: b.dataset.annee }); memoire.marches = ETAT.p;
     profondeur = 0; ecrireURL('push'); rendreVue(); scrollTo(0, 0);
     return;
   }
@@ -1350,26 +1501,71 @@ function rendreMarche(m) {
     </section>`;
 }
 
-function rendreSociete(s) {
-  const t = pct(s.gagnes, s.participations), marches = s.marches || [];
-  const colonnes = [
-    { titre: 'Marché', deux: true, rendu: (m, lien) => `${lien(esc(m.acheteur || ''))}<div class="sous">${esc(m.objet || '')}</div>` },
-    { titre: 'Son offre (DH)', num: true, rendu: m => montantOffre(m) != null ? dh(montantOffre(m)) : tiret },
-    { titre: 'Écart / réf.', titreLong: 'Écart au prix de référence', num: true, large: true,
-      rendu: m => m.ecart != null
-        ? ecartHtml(m.ecart, detailEcart(montantOffre(m), m.prix_reference)) : tiret },
-    { titre: 'Montant attribué (DH)', num: true, large: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
-    { titre: 'Résultat', rendu: m => puceConc(m.statut_concurrent) },
-    { titre: 'Attributaire', large: true, rendu: m => esc(m.attributaire || '—') },
-    { titre: 'Ouverture', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
-  ];
-  const carte = m => `
+// Listes internes des fiches : paginées côté serveur, le compteur affiché égale toujours le nombre consultable.
+const LISTES_FICHE = {
+  s: { titre: 'Participations', unite: ['participation', 'participations'], legende: 'Participations de la société',
+       vide: 'Aucune participation enregistrée.', colonnes: [], carte: null },
+  a: { titre: 'Marchés', unite: ['marché', 'marchés'], legende: "Marchés du maître d'ouvrage",
+       vide: 'Aucun marché.', colonnes: [], carte: null },
+};
+LISTES_FICHE.s.colonnes = [
+  { titre: "Marché et maître d'ouvrage", deux: true, cls: 'col-objet col-marche',
+    rendu: (m, lien) => objetEtAcheteur(m.objet, m.acheteur, lien) },
+  { titre: 'Son offre (DH)', num: true, rendu: m => montantOffre(m) != null ? dh(montantOffre(m)) : tiret },
+  { titre: 'Écart / réf.', titreLong: 'Écart au prix de référence', num: true, large: true,
+    rendu: m => m.ecart != null
+      ? ecartHtml(m.ecart, detailEcart(montantOffre(m), m.prix_reference)) : tiret },
+  { titre: 'Montant attribué (DH)', num: true, large: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
+  { titre: 'Résultat', cls: 'col-resultat', rendu: m => puceConc(m.statut_concurrent) },
+  { titre: 'Attributaire', large: true, cls: 'col-attr', rendu: m => esc(m.attributaire || '—') },
+  { titre: 'Ouverture', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
+];
+LISTES_FICHE.s.carte = m => `
     <div class="carte-ligne__haut"><span class="mono">${esc(m.reference || m.ref)}</span><span>${esc(m.date_ouverture || '')}</span></div>
-    <div class="carte-ligne__titre">${esc(m.acheteur || '')}</div><div class="sous">${esc(m.objet || '')}</div>
+    ${carteObjet(m.objet, m.acheteur)}
     <div class="carte-ligne__bas"><div>${puceConc(m.statut_concurrent)}</div>
       <div class="carte-ligne__montant"><span class="etiq">Son offre</span>${montantOffre(m) != null ? `${dh(montantOffre(m))} <small>DH</small>` : tiret}</div></div>`;
+
+function listeFicheHtml(type, liste) {
+  const conf = LISTES_FICHE[type], { total, page, taille, lignes } = liste, a = liste.annee || '';
+  const pages = Math.max(1, Math.ceil(total / taille));
+  const premier = (page - 1) * taille + 1, dernier = premier + lignes.length - 1;
+  const plage = `${nb(premier)}-${nb(dernier)} sur ${nb(total)}`;
+  return `<div class="section__tete"><h3>${conf.titre}</h3>
+      <p id="fiche-liste-compte" tabindex="-1">${nb(total)} ${total > 1 ? conf.unite[1] : conf.unite[0]} ${
+        a ? periode(a) : 'toutes années confondues'}${pages > 1 ? ` · affichées : <strong>${plage}</strong>` : ''}</p></div>
+    ${lignes.length ? `<div class="cadre">${tableHtml(conf.colonnes, lignes, m => 'm:' + m.ref, null, conf.legende)}${
+        cartesHtml(conf.carte, lignes, m => 'm:' + m.ref)}${
+        pages > 1 ? paginationHtml(page, pages, plage, 'data-liste-page') : ''}</div>`
+      : `<div class="cadre cadre--fixe"><div class="etat etat--compact"><p>${conf.vide}${a ? ` (${periode(a)})` : ''}</p>${
+          a ? `<button type="button" class="btn" data-fiche-annee="">Voir toutes les années</button>` : ''}</div></div>`}`;
+}
+
+async function pageListeFiche(page) {
+  const L = LISTE_FICHE, sect = $('#fiche-liste');
+  if (!L || !sect || page < 1) return;
+  const moi = ++jetonFiche;
+  sect.setAttribute('aria-busy', 'true');
+  sect.querySelector('.cadre')?.classList.add('en-cours');
+  try {
+    const d = await FICHES[L.type].charger(L.cle, page);
+    if (moi !== jetonFiche) return;
+    sect.innerHTML = listeFicheHtml(L.type, d.liste);
+    if (sect.getBoundingClientRect().top < ficheCorps.getBoundingClientRect().top) sect.scrollIntoView({ block: 'start' });
+    $('#fiche-liste-compte').focus({ preventScroll: true });
+  } catch (e) {
+    if (moi !== jetonFiche || e.type === 'session') return;
+    sect.querySelector('.cadre')?.classList.remove('en-cours');
+    if (e.type !== 'limite') annoncer("Impossible de charger cette page de la liste. Réessayez.");
+  } finally {
+    if (moi === jetonFiche) sect.removeAttribute('aria-busy');
+  }
+}
+
+function rendreSociete(s) {
+  const t = pct(s.gagnes, s.participations);
   return `
-    <header class="fiche-tete"><h2 id="fiche-titre" tabindex="-1">${esc(s.nom)}</h2></header>
+    <header class="fiche-tete"><h2 id="fiche-titre" tabindex="-1">${esc(s.nom)}</h2>${periodeFicheHtml(s)}</header>
     <section class="kpis kpis--compact" aria-label="Chiffres clés">
       <div class="kpi"><div class="kpi__lib">Participations</div><div class="kpi__val">${nb(s.participations)}</div></div>
       <div class="kpi"><div class="kpi__lib">Marchés gagnés</div><div class="kpi__val">${nb(s.gagnes)}</div></div>
@@ -1380,35 +1576,32 @@ function rendreSociete(s) {
         <div class="kpi__val">${ecartHtml(s.ecart_moyen, `Moyenne des écarts de ses offres au prix de référence`)}</div>
         <div class="kpi__note">sur ses offres chiffrées</div></div>` : ''}
     </section>
-    <section class="section"><div class="section__tete"><h3>Participations</h3>
-      <p>${marches.length >= 100 ? 'Les 100 plus récentes' : `${nb(marches.length)} participation${marches.length > 1 ? 's' : ''}`}</p></div>
-      ${marches.length ? `<div class="cadre">${tableHtml(colonnes, marches, m => 'm:' + m.ref, null, 'Participations de la société')}${cartesHtml(carte, marches, m => 'm:' + m.ref)}</div>`
-        : '<div class="cadre cadre--fixe"><div class="etat etat--compact"><p>Aucune participation enregistrée.</p></div></div>'}
-    </section>`;
+    <section class="section" id="fiche-liste">${listeFicheHtml('s', s.liste)}</section>`;
 }
 
-function rendreAcheteur(a) {
-  const marches = a.marches_liste || [], gagnants = a.gagnants || [];
-  const maxG = Math.max(1, ...gagnants.map(g => g.n));
-  const colonnes = [
-    { titre: 'Référence', cls: 'col-ref', rendu: (m, lien) => `${lien(`<span class="mono">${esc(m.reference || m.ref)}</span>`)}` },
-    { titre: 'Objet', deux: true, rendu: m => `<div class="sous" style="color:var(--texte-2)">${esc(m.objet || '')}</div>` },
-    { titre: 'Attributaire', rendu: m => m.attributaire ? esc(m.attributaire) : tiret },
-    { titre: 'Montant (DH)', num: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
-    { titre: 'Prix de réf. (DH)', num: true, large: true, rendu: m => m.prix_reference != null ? dh(m.prix_reference) : tiret },
-    { titre: 'Écart', titreLong: "Écart de l'attributaire au prix de référence", num: true,
-      rendu: m => m.ecart_attributaire != null
-        ? ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.prix_reference)) : tiret },
-    { titre: 'Conc.', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
-    { titre: 'Ouverture', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
-  ];
-  const carte = m => `
+LISTES_FICHE.a.colonnes = [
+  { titre: 'Référence', cls: 'col-ref', rendu: (m, lien) => `${lien(referenceHtml(m))}` },
+  { titre: 'Objet', deux: true, cls: 'col-objet col-marche', rendu: m => objetEtAcheteur(m.objet) },
+  { titre: 'Attributaire', cls: 'col-attr', rendu: m => m.attributaire ? esc(m.attributaire) : tiret },
+  { titre: 'Montant (DH)', num: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
+  { titre: 'Prix de réf. (DH)', num: true, large: true, rendu: m => m.prix_reference != null ? dh(m.prix_reference) : tiret },
+  { titre: 'Écart', titreLong: "Écart de l'attributaire au prix de référence", num: true,
+    rendu: m => m.ecart_attributaire != null
+      ? ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.prix_reference)) : tiret },
+  { titre: 'Conc.', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
+  { titre: 'Ouverture', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
+];
+LISTES_FICHE.a.carte = m => `
     <div class="carte-ligne__haut"><span class="mono">${esc(m.reference || m.ref)}</span><span>${esc(m.date_ouverture || '')}</span></div>
-    <div class="carte-ligne__titre" style="font-weight:500">${esc(m.objet || '')}</div>
+    ${carteObjet(m.objet)}
     <div class="carte-ligne__bas"><div><span class="etiq">Attributaire</span>${m.attributaire ? esc(m.attributaire) : '<span class="doux">—</span>'}</div>
       <div class="carte-ligne__montant">${m.montant != null ? `${dh(m.montant)} <small>DH</small>` : tiret}</div></div>`;
+
+function rendreAcheteur(a) {
+  const gagnants = a.gagnants || [];
+  const maxG = Math.max(1, ...gagnants.map(g => g.n));
   return `
-    <header class="fiche-tete"><h2 id="fiche-titre" tabindex="-1">${esc(a.nom)}</h2></header>
+    <header class="fiche-tete"><h2 id="fiche-titre" tabindex="-1">${esc(a.nom)}</h2>${periodeFicheHtml(a)}</header>
     <section class="kpis kpis--compact" aria-label="Chiffres clés">
       <div class="kpi"><div class="kpi__lib">Marchés</div><div class="kpi__val">${nb(a.marches)}</div></div>
       <div class="kpi"><div class="kpi__lib">Attribués</div><div class="kpi__val">${nb(a.attribues)}</div><div class="kpi__note">${pct(a.attribues, a.marches)} % des marchés</div></div>
@@ -1416,21 +1609,22 @@ function rendreAcheteur(a) {
       <div class="kpi"><div class="kpi__lib">Montant attribué</div><div class="kpi__val" title="${dh(a.montant)} DH">${dhCourt(a.montant)} <small>DH</small></div></div>
       <div class="kpi"><div class="kpi__lib">Concurrents / marché</div><div class="kpi__val">${dec(a.concurrents / Math.max(1, a.marches), 1)}</div></div>
     </section>
-    <div class="fiche-actions"><button type="button" class="btn" data-action="voir-marches" data-nom="${esc(a.nom)}">${ic('marches', 18)}Voir tous ses marchés dans l'onglet Marchés</button></div>
+    <div class="fiche-actions"><button type="button" class="btn" data-action="voir-marches" data-nom="${esc(a.nom)}" data-annee="${esc(a.annee || '')}">${ic('marches', 18)}${
+      a.annee ? `Voir ses marchés ${periode(a.annee)} dans l'onglet Marchés` : "Voir tous ses marchés dans l'onglet Marchés"}</button></div>
     ${gagnants.length ? `<section class="section"><div class="section__tete"><h3>Sociétés qui gagnent le plus chez ce maître d'ouvrage</h3><p>Nombre de marchés remportés</p></div>
       <div class="cadre cadre--fixe"><ol class="classement">${gagnants.map(g => `<li><span>${esc(g.nom)}</span><b>${nb(g.n)}</b>
         <span class="jauge" aria-hidden="true"><i style="--l:${(g.n / maxG * 100).toFixed(1)}%"></i></span></li>`).join('')}</ol></div></section>` : ''}
-    <section class="section"><div class="section__tete"><h3>Marchés récents</h3>
-      <p>${marches.length >= 100 ? 'Les 100 plus récents' : `${nb(marches.length)} marché${marches.length > 1 ? 's' : ''}`}</p></div>
-      ${marches.length ? `<div class="cadre">${tableHtml(colonnes, marches, m => 'm:' + m.ref, null, "Marchés du maître d'ouvrage")}${cartesHtml(carte, marches, m => 'm:' + m.ref)}</div>`
-        : '<div class="cadre cadre--fixe"><div class="etat etat--compact"><p>Aucun marché.</p></div></div>'}
-    </section>`;
+    <section class="section" id="fiche-liste">${listeFicheHtml('a', a.liste)}</section>`;
 }
 
 // ================================================================ navigation
 function allerVue(vue) {
   if (vue === ETAT.vue) { const t = $('#titre-vue'); if (t) { scrollTo(0, 0); } return; }
-  ETAT.vue = vue; ETAT.p = memoire[vue] || {}; ETAT.fiche = null; profondeur = 0;
+  // L'année choisie vaut pour tous les onglets : on raisonne par exercice budgétaire.
+  const annee = anneeCourante(), m = memoire[vue] || {};
+  ETAT.vue = vue; ETAT.fiche = null; profondeur = 0;
+  ETAT.p = (m.annee || '') === annee ? m : normaliser(vue, { ...m, annee, page: 1 });
+  memoire[vue] = ETAT.p;
   ecrireURL('push');
   rendreVue();
   scrollTo(0, 0);
@@ -1444,6 +1638,7 @@ document.querySelectorAll('a[data-vue]').forEach(a => a.addEventListener('click'
 addEventListener('popstate', e => {
   profondeur = e.state?.p ?? 0;
   const n = lireURL();
+  if (n.vue !== ETAT.vue || JSON.stringify(n.p) !== JSON.stringify(ETAT.p)) retourListe = null;
   if (n.vue !== ETAT.vue) { ETAT.vue = n.vue; ETAT.p = n.p; memoire[n.vue] = n.p; rendreVue(); }
   else if (JSON.stringify(n.p) !== JSON.stringify(ETAT.p)) { ETAT.p = n.p; memoire[n.vue] = n.p; synchroniserChamps(); chargerResultats(); }
   if (n.fiche !== ETAT.fiche) { if (n.fiche) ouvrirFiche(n.fiche, { mode: 'aucun' }); else fermerFicheSansHistorique(); }
@@ -1451,16 +1646,40 @@ addEventListener('popstate', e => {
 });
 
 // ================================================================ démarrage
+const statsEnCours = new Set();
 async function chargerStats() {
-  ERREUR_STATS = null;
-  if (!STATS) rendreKpis();
-  try { STATS = await api('/api/stats'); }
-  catch (e) { if (e.type === 'session') return; ERREUR_STATS = e; rendreKpis(); return; }
-  $('#entete').textContent = `${nb(STATS.marches)} marchés`;
-  $('#qui').textContent = STATS.visiteur || '';
-  const av = $('#avatar'); av.textContent = initiales(STATS.visiteur); av.parentNode.title = STATS.visiteur || '';
-  rendreKpis();
+  const annee = anneeCourante();
+  if (STATS[annee] || statsEnCours.has(annee)) return;
+  if (ERREUR_STATS?.annee === annee) { ERREUR_STATS = null; rendreKpis(); return; }   // « Réessayer »
+  statsEnCours.add(annee);
+  try { STATS[annee] = await api('/api/stats', { annee }); }
+  catch (e) {
+    if (e.type === 'session') return;
+    ERREUR_STATS = { annee, e };
+    if (annee === anneeCourante()) rendreKpis();
+    return;
+  } finally { statsEnCours.delete(annee); }
+  const S = STATS[annee];
+  if (!annee) $('#entete').textContent = `${nb(S.marches)} marchés`;
+  $('#qui').textContent = S.visiteur || '';
+  const av = $('#avatar'); av.textContent = initiales(S.visiteur); av.parentNode.title = S.visiteur || '';
+  if (annee === anneeCourante()) rendreKpis();
 }
+
+async function chargerAnnees() {
+  try { ANNEES = await api('/api/annees'); } catch (e) { return; }      // sans menu détaillé, le filtre reste utilisable
+  $('#entete').textContent = `${nb(ANNEES.reduce((s, x) => s + x.marches, 0))} marchés`;
+  const an = $('#f-annee');
+  if (an) { an.innerHTML = optionsAnnees(); }
+  // Une année absente de la base (lien ancien, saisie à la main) est retirée plutôt qu'appliquée à vide.
+  const p = normaliser(ETAT.vue, ETAT.p);
+  if ((p.annee || '') !== anneeCourante()) { majParams({ annee: '', page: 1 }); chargerResultats(); }
+  else synchroniserChamps();
+}
+
+const barreHaut = $('.barre-haut');
+new ResizeObserver(() => document.documentElement.style.setProperty('--haut-entete', barreHaut.offsetHeight + 'px'))
+  .observe(barreHaut);
 
 (function demarrer() {
   const e = lireURL();
@@ -1468,7 +1687,7 @@ async function chargerStats() {
   memoire[e.vue] = e.p;
   history.replaceState({ p: 0 }, '', construireHash(ETAT.vue, ETAT.p, null));
   rendreVue();
-  chargerStats();
+  chargerAnnees();
   if (e.fiche) ouvrirFiche(e.fiche);             // empile la fiche au-dessus de la liste : « retour » ramène à la liste
 })();
 </script>

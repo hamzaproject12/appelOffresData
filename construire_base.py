@@ -51,6 +51,8 @@ DROP TABLE IF EXISTS concurrents;
 DROP TABLE IF EXISTS lots;
 DROP TABLE IF EXISTS societes;
 DROP TABLE IF EXISTS acheteurs;
+DROP TABLE IF EXISTS societes_annee;
+DROP TABLE IF EXISTS acheteurs_annee;
 DROP TABLE IF EXISTS recherche;
 CREATE TABLE marches (
   ref TEXT PRIMARY KEY, reference TEXT, acheteur TEXT, maitre_ouvrage TEXT, objet TEXT,
@@ -70,6 +72,11 @@ CREATE TABLE societes (cle TEXT PRIMARY KEY, nom TEXT, participations INTEGER, g
   montant REAL, acheteurs INTEGER);
 CREATE TABLE acheteurs (nom TEXT PRIMARY KEY, marches INTEGER, attribues INTEGER, infructueux INTEGER,
   montant REAL, concurrents INTEGER);
+-- Les mêmes agrégats, exercice par exercice. annee = '' quand la date du marché est douteuse ou absente.
+CREATE TABLE societes_annee (cle TEXT, annee TEXT, participations INTEGER, gagnes INTEGER,
+  montant REAL, acheteurs INTEGER, PRIMARY KEY (cle, annee));
+CREATE TABLE acheteurs_annee (nom TEXT, annee TEXT, marches INTEGER, attribues INTEGER,
+  infructueux INTEGER, montant REAL, concurrents INTEGER, PRIMARY KEY (nom, annee));
 CREATE VIRTUAL TABLE recherche USING fts5(ref UNINDEXED, texte, tokenize="unicode61 remove_diacritics 2");
 CREATE INDEX i_m_acheteur ON marches(acheteur);
 CREATE INDEX i_m_statut ON marches(statut);
@@ -82,6 +89,8 @@ CREATE INDEX i_m_groupe ON marches(groupe);
 CREATE INDEX i_c_ref ON concurrents(ref);
 CREATE INDEX i_c_cle ON concurrents(cle);
 CREATE INDEX i_l_ref ON lots(ref);
+CREATE INDEX i_sa_annee ON societes_annee(annee);
+CREATE INDEX i_aa_annee ON acheteurs_annee(annee);
 """
 
 
@@ -409,6 +418,8 @@ def main() -> None:
     estimations = estimations_connues()
     societes: dict[str, dict] = {}
     acheteurs: dict[str, dict] = {}
+    societes_annee: dict[tuple, dict] = {}
+    acheteurs_annee: dict[tuple, dict] = {}
     n_conc = n_ref = n_hors = 0
 
     for m in marches:
@@ -444,6 +455,7 @@ def main() -> None:
             montant(m.get("montant_ocr")), int(bool(m.get("divergence"))), m.get("justification")))
 
         principale = bool(m.get("principale", 1))
+        annee = "" if date_douteuse or not cle_tri else cle_tri[:4]
         for c in m.get("concurrents") or []:
             cle = c.get("cle") or cle_nom(c.get("nom") or "")
             n_conc += 1
@@ -460,10 +472,18 @@ def main() -> None:
             s["participations"] += 1
             if m.get("acheteur"):
                 s["acheteurs"].add(m["acheteur"])
+            sa = societes_annee.setdefault((cle, annee), {"participations": 0, "gagnes": 0, "montant": 0.0,
+                                                          "acheteurs": set()})
+            sa["participations"] += 1
+            if m.get("acheteur"):
+                sa["acheteurs"].add(m["acheteur"])
             if c.get("statut") == "attributaire":
-                s["gagnes"] += 1
-                s["montant"] += montant(c.get("montant_verifie")) or montant(c.get("montant_acte")) \
+                gain = montant(c.get("montant_verifie")) or montant(c.get("montant_acte")) \
                     or montant(m.get("montant")) or 0
+                s["gagnes"] += 1
+                s["montant"] += gain
+                sa["gagnes"] += 1
+                sa["montant"] += gain
 
         for l in m.get("lots") or []:
             db.execute("INSERT INTO lots VALUES (?,?,?,?)",
@@ -479,6 +499,13 @@ def main() -> None:
         a["infructueux"] += bool(m.get("infructueux"))
         a["montant"] += montant(m.get("montant")) or 0
         a["concurrents"] += len(m.get("concurrents") or [])
+        aa = acheteurs_annee.setdefault((nom_acheteur, annee), {"marches": 0, "attribues": 0, "infructueux": 0,
+                                                                "montant": 0.0, "concurrents": 0})
+        aa["marches"] += 1
+        aa["attribues"] += bool(m.get("attributaire"))
+        aa["infructueux"] += bool(m.get("infructueux"))
+        aa["montant"] += montant(m.get("montant")) or 0
+        aa["concurrents"] += len(m.get("concurrents") or [])
 
         texte = " ".join(filter(None, [
             m.get("acheteur"), m.get("maitre_ouvrage"), m.get("objet"), m.get("reference"), m.get("numero_ao"),
@@ -492,6 +519,13 @@ def main() -> None:
     for nom, a in acheteurs.items():
         db.execute("INSERT OR REPLACE INTO acheteurs VALUES (?,?,?,?,?,?)",
                    (nom, a["marches"], a["attribues"], a["infructueux"], round(a["montant"], 2), a["concurrents"]))
+    for (cle, annee), s in societes_annee.items():
+        db.execute("INSERT INTO societes_annee VALUES (?,?,?,?,?,?)",
+                   (cle, annee, s["participations"], s["gagnes"], round(s["montant"], 2), len(s["acheteurs"])))
+    for (nom, annee), a in acheteurs_annee.items():
+        db.execute("INSERT INTO acheteurs_annee VALUES (?,?,?,?,?,?,?)",
+                   (nom, annee, a["marches"], a["attribues"], a["infructueux"], round(a["montant"], 2),
+                    a["concurrents"]))
 
     db.commit()
     db.execute("ANALYZE")

@@ -622,7 +622,7 @@ const LIBELLE_CONC = { attributaire: 'Attributaire', admis: 'Admis', depose: 'A 
 const puceStatut = s => `<span class="puce ${PUCE_STATUT[s] ?? ''}">${esc(LIBELLE_STATUT[s] || s || '—')}</span>`;
 const puceConc = s => `<span class="puce ${s === 'attributaire' ? 'puce--ok' : (s || '').startsWith('ecarte') ? 'puce--ko' : ''}">${
   s === 'attributaire' ? ic('check', 12) : ''}${esc(LIBELLE_CONC[s] || s || '—')}</span>`;
-const LIB_ECART = { '0': 'Gagnant sous la référence', '-10': 'Gagnant à −10 % ou moins',
+const LIB_ECART = { '0': "Gagnant sous l'estimation", '-10': 'Gagnant à −10 % ou moins',
   '-20': 'Gagnant à −20 % ou moins' };
 const tiret = '<span class="doux">—</span>';
 const referenceHtml = m => `<span class="mono">${esc(m.reference || m.ref).replace(/\//g, '/<wbr>')}</span>`;
@@ -657,15 +657,16 @@ const dateOuverture = m => m.date_ouverture
     ? `<span class="doux" title="Ouverture des plis non lue sur le PV — date de publication de l'annonce">${
         esc(m.publie_le)} <small>(publication)</small></span>`
     : tiret;
-// Écart par rapport au prix de référence : sous la référence = vert (moins cher), au-dessus = rouge.
+// Écart par rapport à l'estimation du maître d'ouvrage : sous l'estimation = vert, au-dessus = rouge.
+// Le prix de référence ne sert pas ici : il classe les concurrents (colonne rang), il ne mesure pas.
 const ecartTexte = e => `${e > 0 ? '+' : ''}${dec(e, 2)} %`;
 // Au survol : le calcul complet, avec les deux montants et l'écart à quatre décimales.
-const detailEcart = (valeur, reference) => valeur == null || !reference ? null :
-  `${dh(valeur)} DH pour un prix de référence de ${dh(reference)} DH, `
-  + `soit ${(v => `${v > 0 ? '+' : ''}${dec(v, 4)}`)((valeur - reference) / reference * 100)} %`;
+const detailEcart = (valeur, estim) => valeur == null || !estim ? null :
+  `${dh(valeur)} DH pour une estimation de ${dh(estim)} DH, `
+  + `soit ${(v => `${v > 0 ? '+' : ''}${dec(v, 4)}`)((valeur - estim) / estim * 100)} %`;
 const ecartHtml = (e, detail) => e == null ? '' :
   `<span class="ecart ecart--${e <= 0 ? 'bas' : 'haut'}" title="${
-    esc(detail || `Écart de ${ecartTexte(e)} par rapport au prix de référence`)}">${ecartTexte(e)}</span>`;
+    esc(detail || `Écart de ${ecartTexte(e)} par rapport à l'estimation du maître d'ouvrage`)}">${ecartTexte(e)}</span>`;
 
 // ================================================================ icônes (SVG écrits à la main)
 const ICONES = {
@@ -771,9 +772,9 @@ const VUES = {
       { titre: 'Montant (DH)', tri: 'montant', num: true, rendu: montantAttribue },
       { titre: 'Prix de réf. (DH)', titreLong: 'Prix de référence', tri: 'reference_prix', num: true, large: true,
         rendu: m => m.prix_reference != null ? dh(m.prix_reference) : tiret },
-      { titre: 'Écart', titreLong: "Écart de l'attributaire au prix de référence", tri: 'ecart', num: true,
+      { titre: 'Écart', titreLong: "Écart de l'attributaire à l'estimation", tri: 'ecart', num: true,
         rendu: m => m.ecart_attributaire != null
-          ? ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.prix_reference)) : tiret },
+          ? ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.estimation)) : tiret },
       { titre: 'Conc.', titreLong: 'Nombre de concurrents', tri: 'concurrents', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
       { titre: 'Ouverture', titreLong: "Date d'ouverture des plis", tri: 'date', genre: 'date', cls: 'col-date',
         rendu: dateOuverture },
@@ -788,7 +789,7 @@ const VUES = {
         <div><span class="etiq">Attributaire</span>${m.attributaire ? esc(m.attributaire) : `<span class="doux">${m.infructueux ? 'Infructueux' : 'Non identifié'}</span>`}</div>
         <div class="carte-ligne__montant">${m.montant != null ? `${montantAttribue(m)} <small>DH</small>` : tiret}
           <span class="etiq">${m.ecart_attributaire != null
-            ? `${ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.prix_reference))} / réf. · ` : ''}${
+            ? `${ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.estimation))} / estim. · ` : ''}${
             nb(m.nb_concurrents)} concurrent${m.nb_concurrents > 1 ? 's' : ''}</span></div>
       </div>`,
   },
@@ -1390,7 +1391,7 @@ dlg.addEventListener('click', e => {
 const montantOffre = c => c.montant_verifie ?? c.montant_acte;
 
 function rendreMarche(m) {
-  const conc = m.concurrents || [], ref = m.prix_reference;
+  const conc = m.concurrents || [], estim = m.estimation;
   const tries = [...conc].sort((a, b) => {
     const x = montantOffre(a), y = montantOffre(b);
     if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return x - y;
@@ -1413,7 +1414,7 @@ function rendreMarche(m) {
   const offre = c => {
     const mt = montantOffre(c), gagne = c.statut === 'attributaire', ecarte = (c.statut || '').startsWith('ecarte');
     const ecart = mt != null && m.montant && !gagne ? (mt - m.montant) / m.montant * 100 : null;
-    const ecartRef = c.ecart;                 // écart avec le prix de référence, calculé côté serveur
+    const ecartRef = c.ecart;                 // écart avec l'estimation, calculé à la construction de la base
     const w = mt != null && max ? Math.max(1, mt / max * 100) : 0;
     return `<li class="offre ${gagne ? 'est-gagnant' : ''} ${ecarte ? 'est-ecarte' : ''}">
       <div class="offre__nom">${gagne ? ic('coupe', 18) : ''}<span>${c.cle ? aFiche('s:' + c.cle, esc(c.nom), 'lien-discret') : esc(c.nom)}${
@@ -1423,7 +1424,7 @@ function rendreMarche(m) {
       <div class="offre__montant">${mt != null ? dh(mt) : tiret}${c.montant_verifie != null && c.montant_acte != null && c.montant_verifie !== c.montant_acte
         ? `<small>acte : ${dh(c.montant_acte)}</small>` : ''}</div>
       <div class="offre__ecart">${ecartRef != null
-        ? `<span class="sr">Écart avec le prix de référence : </span>${ecartHtml(ecartRef, detailEcart(mt, ref))}`
+        ? `<span class="sr">Écart avec l'estimation : </span>${ecartHtml(ecartRef, detailEcart(mt, estim))}`
         : mt == null ? '' : gagne ? 'attributaire' : ecart == null ? '' : `<span class="sr">Écart avec l'attributaire : </span>${ecart > 0 ? '+' : ''}${dec(ecart, 2)} %`}</div>
     </li>`;
   };
@@ -1460,11 +1461,11 @@ function rendreMarche(m) {
           ${m.nb_offres ? `<div class="kpi__note">${nb(m.nb_offres)} offre${m.nb_offres > 1 ? 's' : ''} retenue${m.nb_offres > 1 ? 's' : ''}</div>` : ''}</div>
         <div class="kpi"><div class="kpi__lib">Prix de référence</div>
           <div class="kpi__val">${m.prix_reference != null ? `${dh(m.prix_reference)} <small>DH</small>` : '—'}</div></div>
-        <div class="kpi"><div class="kpi__lib">Écart de l'attributaire</div>
+        <div class="kpi"><div class="kpi__lib">Écart de l'attributaire / estimation</div>
           <div class="kpi__val">${m.ecart_attributaire != null
-            ? ecartHtml(m.ecart_attributaire, detailEcart(m.montant, ref)) : '—'}</div></div>
+            ? ecartHtml(m.ecart_attributaire, detailEcart(m.montant, estim)) : '—'}</div></div>
       </section>
-      <p class="section__pied">Prix de référence = (moyenne des offres + estimation) ÷ 2.${
+      <p class="section__pied">Prix de référence = (moyenne des offres + estimation) ÷ 2 ; il sert à classer les concurrents. Les écarts, eux, sont mesurés sur l'estimation du maître d'ouvrage.${
         m.prix_reference == null ? (m.estimation_ecartee
           ? " Non calculé ici : l'estimation et les offres ne portent pas sur le même périmètre (marché en lots)."
           : " Calculable dès que l'estimation et au moins une offre chiffrée sont connues.") : ''}${
@@ -1493,10 +1494,10 @@ function rendreMarche(m) {
       <div class="section__tete"><h3 id="titre-offres">Comparaison des offres</h3>
         <p>${nb(conc.length)} concurrent${conc.length > 1 ? 's' : ''}${montants.length ? ` · offres de ${dh(min)} à ${dh(max)} DH` : ''}</p></div>
       ${conc.length ? `<div class="cadre cadre--fixe offres-cadre">
-        <div class="offres__entete" aria-hidden="true"><span>Concurrent</span><span>Résultat</span><span>Offre (proportion)</span><span class="num">Montant (DH)</span><span class="num" title="Écart par rapport au prix de référence">Écart / réf.</span></div>
+        <div class="offres__entete" aria-hidden="true"><span>Concurrent</span><span>Résultat</span><span>Offre (proportion)</span><span class="num">Montant (DH)</span><span class="num" title="Écart par rapport à l'estimation du maître d'ouvrage">Écart / estim.</span></div>
         <ol class="offres">${tries.map(offre).join('')}</ol></div>
-        <p class="section__pied">Offres classées de la moins chère à la plus chère. Barres proportionnelles au montant de l'offre (après vérification si disponible, sinon acte d'engagement). Écart calculé par rapport au prix de référence${
-          m.prix_reference == null ? ", ou au montant attribué quand le prix de référence n'est pas connu" : ''}.</p>`
+        <p class="section__pied">Offres classées de la moins chère à la plus chère. Barres proportionnelles au montant de l'offre (après vérification si disponible, sinon acte d'engagement). Écart calculé par rapport à l'estimation du maître d'ouvrage${
+          m.estimation == null ? ", ou au montant attribué quand l'estimation n'est pas connue" : ''} — le prix de référence, lui, sert à classer les concurrents, pas à mesurer l'écart.</p>`
       : `<div class="cadre cadre--fixe"><div class="etat etat--compact"><p>Aucun concurrent lu dans ce PV.</p></div></div>`}
     </section>`;
 }
@@ -1512,9 +1513,9 @@ LISTES_FICHE.s.colonnes = [
   { titre: "Marché et maître d'ouvrage", deux: true, cls: 'col-objet col-marche',
     rendu: (m, lien) => objetEtAcheteur(m.objet, m.acheteur, lien) },
   { titre: 'Son offre (DH)', num: true, rendu: m => montantOffre(m) != null ? dh(montantOffre(m)) : tiret },
-  { titre: 'Écart / réf.', titreLong: 'Écart au prix de référence', num: true, large: true,
+  { titre: 'Écart / estim.', titreLong: "Écart à l'estimation du maître d'ouvrage", num: true, large: true,
     rendu: m => m.ecart != null
-      ? ecartHtml(m.ecart, detailEcart(montantOffre(m), m.prix_reference)) : tiret },
+      ? ecartHtml(m.ecart, detailEcart(montantOffre(m), m.estimation)) : tiret },
   { titre: 'Montant attribué (DH)', num: true, large: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
   { titre: 'Résultat', cls: 'col-resultat', rendu: m => puceConc(m.statut_concurrent) },
   { titre: 'Attributaire', large: true, cls: 'col-attr', rendu: m => esc(m.attributaire || '—') },
@@ -1572,8 +1573,8 @@ function rendreSociete(s) {
       <div class="kpi"><div class="kpi__lib">Taux de réussite</div><div class="kpi__val">${t} %</div><span class="jauge" aria-hidden="true" style="height:6px"><i style="--l:${t}%;background:var(--barre-gagnant)"></i></span></div>
       <div class="kpi"><div class="kpi__lib">Montant gagné</div><div class="kpi__val" title="${dh(s.montant)} DH">${dhCourt(s.montant)} <small>DH</small></div></div>
       <div class="kpi"><div class="kpi__lib">Maîtres d'ouvrage</div><div class="kpi__val">${nb(s.acheteurs)}</div></div>
-      ${s.ecart_moyen != null ? `<div class="kpi"><div class="kpi__lib">Écart moyen au prix de référence</div>
-        <div class="kpi__val">${ecartHtml(s.ecart_moyen, `Moyenne des écarts de ses offres au prix de référence`)}</div>
+      ${s.ecart_moyen != null ? `<div class="kpi"><div class="kpi__lib">Écart moyen à l'estimation</div>
+        <div class="kpi__val">${ecartHtml(s.ecart_moyen, `Moyenne des écarts de ses offres à l'estimation du maître d'ouvrage`)}</div>
         <div class="kpi__note">sur ses offres chiffrées</div></div>` : ''}
     </section>
     <section class="section" id="fiche-liste">${listeFicheHtml('s', s.liste)}</section>`;
@@ -1585,9 +1586,9 @@ LISTES_FICHE.a.colonnes = [
   { titre: 'Attributaire', cls: 'col-attr', rendu: m => m.attributaire ? esc(m.attributaire) : tiret },
   { titre: 'Montant (DH)', num: true, rendu: m => m.montant != null ? dh(m.montant) : tiret },
   { titre: 'Prix de réf. (DH)', num: true, large: true, rendu: m => m.prix_reference != null ? dh(m.prix_reference) : tiret },
-  { titre: 'Écart', titreLong: "Écart de l'attributaire au prix de référence", num: true,
+  { titre: 'Écart', titreLong: "Écart de l'attributaire à l'estimation", num: true,
     rendu: m => m.ecart_attributaire != null
-      ? ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.prix_reference)) : tiret },
+      ? ecartHtml(m.ecart_attributaire, detailEcart(m.montant, m.estimation)) : tiret },
   { titre: 'Conc.', num: true, large: true, rendu: m => nb(m.nb_concurrents) },
   { titre: 'Ouverture', cls: 'col-date', rendu: m => esc(m.date_ouverture || '—') },
 ];

@@ -1,7 +1,12 @@
 """Construit la base SQLite du site à partir des résultats de l'extraction.
 
-    python construire_base.py                      # lit ..\resultats\json, écrit pv.db
-    python construire_base.py C:\\pv\\resultats pv.db
+Chaque catégorie vit dans son propre dossier, et le site est toujours un cran sous les données :
+
+    pv_service\site> python construire_base.py                   lit ..\ , écrit pv.db
+    pv_travaux\site> python construire_base.py --base travaux    lit ..\ , écrit pv_travaux.db
+    pv_service\site> python construire_base.py C:\\ailleurs\\resultats pv.db
+
+--base ne sert plus qu'à nommer la base produite : les chemins de lecture sont les mêmes partout.
 
 La base contient les marchés, les concurrents, les sociétés et les acheteurs déjà agrégés,
 plus un index de recherche plein texte. Elle fait quelques dizaines de Mo : c'est elle
@@ -22,13 +27,33 @@ import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 
-SOURCE = Path(sys.argv[1] if len(sys.argv) > 1 else "../resultats")
-CIBLE = Path(sys.argv[2] if len(sys.argv) > 2 else "pv.db")
+def _argument(nom: str, defaut=None):
+    """--nom valeur, lu avant tout le reste : les chemins sont des variables de module."""
+    if nom in sys.argv:
+        i = sys.argv.index(nom)
+        if i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return defaut
+
+
+BASE = _argument("--base")              # nomme la base produite : travaux -> pv_travaux.db
+# Seuil d'élimination des offres hors de ±X % de l'estimation avant la moyenne, en pourcentage.
+# 0 = pas d'élimination. Mesuré sur les services : 25 % est neutre, 20 % dégrade la concordance
+# avec les attributions réelles. À retester sur chaque catégorie avant d'être activé.
+SEUIL = float(_argument("--seuil", 0) or 0) / 100
+
+_positionnels = [a for a in sys.argv[1:] if not a.startswith("--")
+                 and a not in (_argument("--base"), _argument("--seuil"))]
+# Les données d'une catégorie sont toujours dans le dossier parent du site : pv_service\consultations
+# pour le site pv_service\site, pv_travaux\extraits pour pv_travaux\site. Une seule convention, donc
+# un seul jeu de chemins — ce qui manque (l'OCR pour les Travaux) est simplement absent.
+SOURCE = Path(_positionnels[0] if len(_positionnels) > 0 else "../resultats")
+CIBLE = Path(_positionnels[1] if len(_positionnels) > 1 else (f"pv_{BASE}.db" if BASE else "pv.db"))
 # Estimations du maître d'ouvrage, récupérées par collecter_consultations.py
-ESTIMATIONS = Path(sys.argv[3] if len(sys.argv) > 3 else "../consultations/estimations.csv")
+ESTIMATIONS = Path(_positionnels[2] if len(_positionnels) > 2 else "../consultations/estimations.csv")
 # Extraits de PV en HTML, récupérés par collecter_extraits.py : le PV tel que le maître d'ouvrage
 # l'a saisi dans le portail, sans OCR.
-EXTRAITS = Path(sys.argv[4] if len(sys.argv) > 4 else "../extraits")
+EXTRAITS = Path(_positionnels[3] if len(_positionnels) > 3 else "../extraits")
 
 FORMES = re.compile(r"\b(ste|societe|sarl|sarlau|sa|sas|snc|au|groupement|gpt|cooperative|entreprise|ets|"
                     r"etablissements?|bureau|cabinet|group|groupe)\b")
@@ -53,21 +78,30 @@ DROP TABLE IF EXISTS societes;
 DROP TABLE IF EXISTS acheteurs;
 DROP TABLE IF EXISTS societes_annee;
 DROP TABLE IF EXISTS acheteurs_annee;
+DROP TABLE IF EXISTS qualifications;
 DROP TABLE IF EXISTS recherche;
+-- Deux bases de prix cohabitent et ne servent pas à la même chose :
+--   prix_reference = (moyenne des offres + estimation) / 2 — classe les concurrents (colonne rang)
+--   estimation     = le budget annoncé par le maître d'ouvrage — mesure les écarts (colonnes ecart)
 CREATE TABLE marches (
   ref TEXT PRIMARY KEY, reference TEXT, acheteur TEXT, maitre_ouvrage TEXT, objet TEXT,
   numero_ao TEXT, procedure TEXT, categorie TEXT, publie_le TEXT, date_ouverture TEXT, tri_date TEXT,
   attributaire TEXT, cle_attributaire TEXT, montant REAL, infructueux INTEGER, nb_concurrents INTEGER,
   statut TEXT, alertes TEXT, fichier TEXT, lien TEXT,
   estimation REAL, caution_provisoire REAL, confiance_estimation TEXT,
-  moyenne_offres REAL, nb_offres INTEGER, prix_reference REAL, ecart_attributaire REAL,
+  moyenne_offres REAL, nb_offres INTEGER, prix_reference REAL, ecart_attributaire REAL, -- / estimation
   montants_ecartes INTEGER, estimation_ecartee INTEGER, date_douteuse INTEGER,
   montant_douteux INTEGER, versions INTEGER, principale INTEGER, groupe TEXT,
-  source TEXT, montant_ocr REAL, divergence INTEGER, justification TEXT);
+  source TEXT, montant_ocr REAL, divergence INTEGER, justification TEXT,
+  classes TEXT, mieux_disant TEXT, attributaire_mieux_disant INTEGER);
 CREATE TABLE concurrents (
   id INTEGER PRIMARY KEY, ref TEXT, nom TEXT, cle TEXT, montant_acte REAL, montant_verifie REAL,
-  statut TEXT, lots TEXT, ecart REAL, source TEXT);
+  statut TEXT, lots TEXT, ecart REAL, source TEXT, rang INTEGER); -- ecart / estimation, rang / prix_reference
 CREATE TABLE lots (ref TEXT, lot TEXT, attributaire TEXT, montant REAL);
+-- Qualification exigée pour soumissionner : « Equipement / B- Travaux routiers /
+-- B.1- Terrassements courants / Classe 4 ». Plusieurs par marché possible.
+CREATE TABLE qualifications (ref TEXT, secteur TEXT, domaine TEXT, qualification TEXT,
+  classe TEXT, brut TEXT);
 CREATE TABLE societes (cle TEXT PRIMARY KEY, nom TEXT, participations INTEGER, gagnes INTEGER,
   montant REAL, acheteurs INTEGER);
 CREATE TABLE acheteurs (nom TEXT PRIMARY KEY, marches INTEGER, attribues INTEGER, infructueux INTEGER,
@@ -89,6 +123,8 @@ CREATE INDEX i_m_groupe ON marches(groupe);
 CREATE INDEX i_c_ref ON concurrents(ref);
 CREATE INDEX i_c_cle ON concurrents(cle);
 CREATE INDEX i_l_ref ON lots(ref);
+CREATE INDEX i_q_ref ON qualifications(ref);
+CREATE INDEX i_q_classe ON qualifications(classe);
 CREATE INDEX i_sa_annee ON societes_annee(annee);
 CREATE INDEX i_aa_annee ON acheteurs_annee(annee);
 """
@@ -269,6 +305,17 @@ def montant(v):
     return v if isinstance(v, (int, float)) and 0 < v <= PLAFOND else None
 
 
+def _liste_json(valeur):
+    """Les colonnes qualifications et classes de estimations.csv sont du JSON dans une cellule."""
+    if not valeur or valeur in ("None", "[]"):
+        return []
+    try:
+        lu = json.loads(valeur)
+    except (ValueError, TypeError):
+        return []
+    return lu if isinstance(lu, list) else []
+
+
 def estimations_connues() -> dict[str, dict]:
     """{refConsultation: {estimation, caution, confiance}} d'après consultations/estimations.csv."""
     if not ESTIMATIONS.exists():
@@ -282,10 +329,20 @@ def estimations_connues() -> dict[str, dict]:
                     return float(v) if v not in (None, "", "None") else None
                 except ValueError:
                     return None
-            out[str(l.get("refConsultation") or "").strip()] = {
+            # Clé de rattachement : la référence du PV quand il y en a un, sinon « c » + celle de
+            # la consultation — exactement la convention des fichiers d'extraits. Sans ça, une
+            # catégorie collectée sans PV perdrait toutes ses estimations.
+            pv = str(l.get("refConsultation") or "").strip()
+            annonce = str(l.get("refConsultation_annonce") or "").strip()
+            cle = pv or (("c" + annonce) if annonce else "")
+            if not cle:
+                continue
+            out[cle] = {
                 "estimation": montant(nombre(l.get("estimation"))),
                 "caution": montant(nombre(l.get("caution_provisoire"))),
                 "confiance": (l.get("confiance") or "").strip() or None,
+                "qualifications": _liste_json(l.get("qualifications")),
+                "classes": _liste_json(l.get("classes")),
             }
     print(f"{len(out)} estimations lues dans {ESTIMATIONS}")
     return out
@@ -294,6 +351,49 @@ def estimations_connues() -> dict[str, dict]:
 def offre_de(c: dict) -> float | None:
     """Le montant retenu pour un concurrent : celui après vérification, sinon l'acte d'engagement."""
     return montant(c.get("montant_verifie")) or montant(c.get("montant_acte"))
+
+
+ADMIS = ("admis", "attributaire", "retenu")
+
+
+def offres_du_marche(concurrents: list[dict]) -> tuple[list[float], int]:
+    """Les offres qui entrent dans la moyenne, et un drapeau disant si on a pu se limiter aux admis.
+
+    Le décret calcule le prix de référence sur les offres des concurrents ADMIS, c'est-à-dire ceux
+    qui ont passé l'examen administratif et technique. Quand le procès-verbal ne distingue pas les
+    admis — il se contente parfois de lister les plis déposés — on prend toutes les offres plutôt
+    que de renoncer au calcul.
+    """
+    admises = [v for v in (offre_de(c) for c in concurrents if c.get("statut") in ADMIS) if v]
+    if admises:
+        return admises, 1
+    return [v for v in (offre_de(c) for c in concurrents) if v], 0
+
+
+def dans_la_fourchette(offres: list[float], estimation: float | None) -> list[float]:
+    """Élimination des offres hors de ±SEUIL de l'estimation, quand un seuil est demandé.
+
+    Désactivé par défaut : mesuré sur 9 710 marchés services, un seuil de 25 % ne change rien et un
+    seuil de 20 % fait perdre cinq points de concordance avec les attributions réelles.
+    """
+    if not SEUIL or not estimation:
+        return offres
+    return [v for v in offres if estimation * (1 - SEUIL) <= v <= estimation * (1 + SEUIL)] or offres
+
+
+def classement_commission(candidats: list[tuple], reference: float | None) -> dict:
+    """Rang de chaque offre selon la règle du mieux-disant, et non selon le prix le plus bas.
+
+    La commission retient l'offre la plus proche du prix de référence sans le dépasser, puis
+    s'éloigne vers le bas ; si aucune offre n'est sous la référence, elle prend la plus proche
+    au-dessus. Vérifié sur 9 710 marchés services dont l'attributaire est connu : cette règle
+    désigne le bon gagnant dans 60,5 % des cas, contre 29,3 % pour la règle du moins-disant.
+    """
+    if reference is None:
+        return {}
+    sous = sorted((c for c in candidats if c[1] <= reference), key=lambda c: -c[1])
+    dessus = sorted((c for c in candidats if c[1] > reference), key=lambda c: c[1])
+    return {c[0]: i for i, c in enumerate(sous + dessus, 1)}
 
 
 ECHELLE = 8            # un montant 8 fois plus grand (ou plus petit) que les autres est un chiffre mal lu
@@ -347,17 +447,22 @@ def montant_hors_echelle(montant_attr, offres: list[float], reference: float | N
                     and not repere / ECHELLE <= montant_attr <= repere * ECHELLE))
 
 
-def ecart(valeur: float | None, reference: float | None) -> float | None:
-    """Écart en % par rapport au prix de référence : négatif = moins cher que la référence.
+def ecart(valeur: float | None, estimation: float | None) -> float | None:
+    """Écart en % par rapport à l'estimation du maître d'ouvrage : négatif = moins cher qu'elle.
+
+    L'estimation est la base de lecture économique : c'est le budget que l'acheteur avait annoncé,
+    et c'est par rapport à lui qu'un montant est cher ou bon marché. Le prix de référence, lui,
+    dépend des offres reçues — il sert à classer les concurrents (voir classement_commission),
+    pas à mesurer un écart.
 
     Un montant hors d'échelle ne donne pas un écart de +2 000 % : c'est un chiffre mal lu,
     on préfère ne rien afficher.
     """
-    if not valeur or not reference:
+    if not valeur or not estimation:
         return None
-    if not reference / ECHELLE <= valeur <= reference * ECHELLE:
+    if not estimation / ECHELLE <= valeur <= estimation * ECHELLE:
         return None
-    return round((valeur - reference) / reference * 100, 2)
+    return round((valeur - estimation) / estimation * 100, 2)
 
 
 def jour(valeur: str | None) -> datetime.date | None:
@@ -388,8 +493,11 @@ def date_de_tri(ouverture: str | None, publication: str | None) -> tuple[str, in
 
 def main() -> None:
     marches = marches_source()
+    if not marches and not EXTRAITS.is_dir():
+        # Une catégorie collectée sans PV n'a pas de résultats OCR : les extraits suffisent.
+        sys.exit(f"Aucune donnée trouvée, ni dans {SOURCE.resolve()} ni dans {EXTRAITS.resolve()}")
     if not marches:
-        sys.exit(f"Aucune donnée trouvée dans {SOURCE.resolve()}")
+        print(f"(aucun résultat OCR dans {SOURCE} — la base sera bâtie sur les seuls extraits du portail)")
 
     CIBLE.unlink(missing_ok=True)
     for suffixe in ("-wal", "-shm"):
@@ -432,16 +540,27 @@ def main() -> None:
         # Le portail donne parfois l'estimation dans l'extrait lui-même : elle vaut celle du CSV.
         e = {"estimation": est.get("estimation") or montant(m.get("estimation_portail")),
              "caution": est.get("caution") or montant(m.get("caution_portail")),
-             "confiance": est.get("confiance") or ("portail" if m.get("estimation_portail") else None)}
-        offres = [v for v in (offre_de(c) for c in m.get("concurrents") or []) if v]
+             "confiance": est.get("confiance") or ("portail" if m.get("estimation_portail") else None),
+             "qualifications": est.get("qualifications") or [], "classes": est.get("classes") or []}
+        concurrents = m.get("concurrents") or []
+        offres, sur_admis = offres_du_marche(concurrents)
+        offres = dans_la_fourchette(offres, e.get("estimation"))
         moyenne, nb_offres, reference, ecartes, est_hors = prix_de_reference(e.get("estimation"), offres)
+        # Le classement de la commission porte sur les mêmes offres que la moyenne.
+        candidats = [(i, offre_de(c)) for i, c in enumerate(concurrents)
+                     if offre_de(c) and (c.get("statut") in ADMIS or not sur_admis)]
+        rangs = classement_commission(candidats, reference)
+        premier = next((i for i, r in rangs.items() if r == 1), None)
+        mieux_disant = concurrents[premier].get("nom") if premier is not None else None
+        attributaire_mieux = (int(concurrents[premier].get("statut") == "attributaire")
+                              if premier is not None and m.get("attributaire") else None)
         n_ref += reference is not None
         n_hors += est_hors
         montant_attr = montant(m.get("montant")) or next(
             (offre_de(c) for c in m.get("concurrents") or [] if c.get("statut") == "attributaire"), None)
 
         db.execute("INSERT OR REPLACE INTO marches VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
-                   "?,?,?,?,?,?,?,?,?)", (
+                   "?,?,?,?,?,?,?,?,?,?,?,?)", (
             ref, m.get("reference"), m.get("acheteur"), m.get("maitre_ouvrage"), m.get("objet"),
             m.get("numero_ao"), m.get("procedure"), m.get("categorie"), m.get("publie_le"),
             m.get("date_ouverture"), cle_tri,
@@ -449,21 +568,27 @@ def main() -> None:
             m.get("nb_concurrents") or len(m.get("concurrents") or []), m.get("statut"),
             " | ".join(m.get("alertes") or []), m.get("fichier"), m.get("lien"),
             e.get("estimation"), e.get("caution"), e.get("confiance"),
-            moyenne, nb_offres, reference, ecart(montant_attr, reference), ecartes, est_hors,
+            moyenne, nb_offres, reference, ecart(montant_attr, e.get("estimation")), ecartes, est_hors,
             date_douteuse, montant_hors_echelle(montant_attr, offres, reference), m.get("versions", 1),
             m.get("principale", 1), m.get("groupe") or ref, m.get("source", "ocr"),
-            montant(m.get("montant_ocr")), int(bool(m.get("divergence"))), m.get("justification")))
+            montant(m.get("montant_ocr")), int(bool(m.get("divergence"))), m.get("justification"),
+            ",".join(e.get("classes") or []) or None, mieux_disant, attributaire_mieux))
+
+        for q in e.get("qualifications") or []:
+            db.execute("INSERT INTO qualifications VALUES (?,?,?,?,?,?)",
+                       (ref, q.get("secteur"), q.get("domaine"), q.get("qualification"),
+                        q.get("classe"), q.get("brut")))
 
         principale = bool(m.get("principale", 1))
         annee = "" if date_douteuse or not cle_tri else cle_tri[:4]
-        for c in m.get("concurrents") or []:
+        for i_c, c in enumerate(concurrents):
             cle = c.get("cle") or cle_nom(c.get("nom") or "")
             n_conc += 1
             db.execute("INSERT INTO concurrents (ref, nom, cle, montant_acte, montant_verifie, statut, lots,"
-                       " ecart, source) VALUES (?,?,?,?,?,?,?,?,?)",
+                       " ecart, source, rang) VALUES (?,?,?,?,?,?,?,?,?,?)",
                        (ref, c.get("nom"), cle, montant(c.get("montant_acte")), montant(c.get("montant_verifie")),
                         c.get("statut"), ",".join(str(x) for x in c.get("lots") or []),
-                        ecart(offre_de(c), reference), m.get("source", "ocr")))
+                        ecart(offre_de(c), e.get("estimation")), m.get("source", "ocr"), rangs.get(i_c)))
             if not principale:
                 continue                       # une republication ne compte pas deux fois
             s = societes.setdefault(cle, {"noms": {}, "participations": 0, "gagnes": 0, "montant": 0.0,

@@ -44,8 +44,16 @@ def decompresser(cible: Path) -> None:
     """
     archive = Path(str(cible) + ".gz")
     if not archive.exists():
-        archive = ICI / "pv.db.gz"
+        # Le site Travaux embarque pv_travaux.db.gz, le site Services pv.db.gz : on prend celle
+        # qui est là, sans supposer son nom.
+        voisines = sorted(ICI.glob("pv*.db.gz"))
+        archive = voisines[0] if len(voisines) == 1 else ICI / "pv.db.gz"
     if not archive.exists():
+        return
+    if cible.exists() and os.environ.get("AMORCE_SEULEMENT") == "1":
+        # Le pod met la base à jour tout seul sur son volume : l'archive du dépôt ne sert qu'à
+        # l'amorcer la première fois. Sans ce garde-fou, un simple déploiement de code ferait
+        # revenir la base en arrière et effacerait les mises à jour accumulées.
         return
     if cible.exists() and cible.stat().st_mtime >= archive.stat().st_mtime:
         return
@@ -63,12 +71,24 @@ def decompresser(cible: Path) -> None:
         print(f"[pv] impossible de déplier {archive} : {e}", flush=True)
 
 
+def base_voisine() -> Path | None:
+    """Une base posée à côté du script sous un autre nom : un déploiement par catégorie.
+
+    Le site Travaux embarque pv_travaux.db.gz, le site Services pv.db.gz. Tant qu'il n'y en a
+    qu'une, on la trouve sans avoir à configurer quoi que ce soit.
+    """
+    archives = sorted(ICI.glob("pv*.db.gz"))
+    return ICI / archives[0].name[:-3] if len(archives) == 1 else None
+
+
 def trouver_base() -> Path:
-    """La base indiquée par BASE, sinon le volume /data (Railway), sinon celle posée à côté du script."""
+    """La base indiquée par BASE, sinon celle posée à côté du script, sinon le volume /data."""
     if os.environ.get("BASE"):
         cible = Path(os.environ["BASE"])
     elif (ICI / "pv.db").exists():
         cible = ICI / "pv.db"
+    elif base_voisine() is not None:
+        cible = base_voisine()
     elif os.name != "nt" and Path("/data").is_dir():
         cible = Path("/data/pv.db")
     else:
@@ -77,7 +97,32 @@ def trouver_base() -> Path:
     return cible
 
 
+def completer_base(chemin: Path) -> None:
+    """Ajoute à une base d'une version antérieure ce que ce serveur attend.
+
+    La base et le code voyagent séparément : un déploiement peut livrer ce serveur avec la base
+    d'avant. Plutôt que de tomber en panne sur une colonne absente, on la crée vide — le site
+    fonctionne, les nouvelles colonnes sont seulement sans contenu jusqu'à la reconstruction.
+    """
+    try:
+        db = sqlite3.connect(chemin)
+        colonnes = {r[1] for r in db.execute("PRAGMA table_info(marches)")}
+        for nom, type_sql in (("classes", "TEXT"), ("mieux_disant", "TEXT"),
+                              ("attributaire_mieux_disant", "INTEGER")):
+            if nom not in colonnes:
+                db.execute(f"ALTER TABLE marches ADD COLUMN {nom} {type_sql}")
+        if "rang" not in {r[1] for r in db.execute("PRAGMA table_info(concurrents)")}:
+            db.execute("ALTER TABLE concurrents ADD COLUMN rang INTEGER")
+        db.execute("CREATE TABLE IF NOT EXISTS qualifications (ref TEXT, secteur TEXT, domaine TEXT,"
+                   " qualification TEXT, classe TEXT, brut TEXT)")
+        db.commit()
+        db.close()
+    except sqlite3.Error as e:
+        print(f"[pv] base non complétée ({e}) : certaines colonnes resteront absentes", flush=True)
+
+
 BASE = trouver_base()
+completer_base(BASE)
 # Le journal vit dans son propre fichier : la base de données est remplacée à chaque mise à jour,
 # le suivi des consultations, lui, doit survivre.
 JOURNAL_BASE = Path(os.environ.get("JOURNAL") or
@@ -476,7 +521,18 @@ def api_marches(request: Request, session: dict = Depends(visiteur)):
         params.append(float(p["montant_min"]))
     if p.get("estimation") == "1":
         where.append("m.estimation IS NOT NULL")
-    if p.get("ecart_max"):                      # « le gagnant était au moins X % sous la référence »
+    # Qualification exigée : secteur, qualification précise ou classe. Un marché peut en exiger
+    # plusieurs, d'où la sous-requête plutôt qu'une colonne.
+    for cle_filtre, colonne in (("secteur", "secteur"), ("qualification", "qualification"),
+                                ("classe", "classe")):
+        if p.get(cle_filtre):
+            where.append(f"m.ref IN (SELECT ref FROM qualifications WHERE {colonne} = ?)")
+            params.append(p[cle_filtre])
+    if p.get("anomalie") == "1":
+        # L'attributaire réel n'est pas celui que la règle du mieux-disant désigne : soit une
+        # élimination non publiée, soit une attribution qui mérite un regard.
+        where.append("m.attributaire_mieux_disant = 0")
+    if p.get("ecart_max"):                      # « le gagnant était au moins X % sous l'estimation »
         where.append("m.ecart_attributaire IS NOT NULL AND m.ecart_attributaire <= ?")
         params.append(float(p["ecart_max"]))
     if p.get("ecart_min"):
@@ -493,7 +549,8 @@ def api_marches(request: Request, session: dict = Depends(visiteur)):
     lignes = lire(f"""SELECT m.ref, m.reference, m.acheteur, m.maitre_ouvrage, m.objet, m.attributaire,
                       m.montant, m.montant_douteux, m.nb_concurrents, m.date_ouverture, m.publie_le,
                       m.date_douteuse,
-                      m.statut, m.infructueux, m.estimation, m.prix_reference, m.ecart_attributaire, m.source
+                      m.statut, m.infructueux, m.estimation, m.prix_reference, m.ecart_attributaire, m.source,
+                      m.classes, m.mieux_disant, m.attributaire_mieux_disant
                       FROM marches m WHERE {filtre}
                       ORDER BY {colonne} IS NULL, {colonne} {sens} LIMIT ? OFFSET ?""",
                    tuple(params) + (taille, (page - 1) * taille))
@@ -509,9 +566,12 @@ def api_marche(ref: str, request: Request, session: dict = Depends(visiteur)):
     if not m:
         raise HTTPException(404, "Marché introuvable")
     m = m[0]
-    m["concurrents"] = lire("SELECT nom, cle, montant_acte, montant_verifie, statut, lots, ecart"
+    # Classés dans l'ordre de la commission : le mieux-disant d'abord, pas le moins cher.
+    m["concurrents"] = lire("SELECT nom, cle, montant_acte, montant_verifie, statut, lots, ecart, rang"
                             " FROM concurrents WHERE ref = ?"
-                            " ORDER BY montant_verifie IS NULL, montant_verifie", (ref,))
+                            " ORDER BY rang IS NULL, rang, montant_verifie IS NULL, montant_verifie", (ref,))
+    m["qualifications"] = lire("SELECT secteur, domaine, qualification, classe, brut"
+                               " FROM qualifications WHERE ref = ?", (ref,))
     m["lots"] = lire("SELECT lot, attributaire, montant FROM lots WHERE ref = ?", (ref,))
     # Les autres publications du même PV : rien n'est masqué, le lecteur peut les ouvrir.
     m["autres_versions"] = lire(
@@ -531,6 +591,18 @@ def api_societes(request: Request, session: dict = Depends(visiteur)):
     if p.get("q"):
         where.append("nom LIKE ?")
         params.append(f"%{p['q'].strip()[:40]}%")
+    # « Quelles sociétés sont qualifiées B.1 classe 3 ? » — la qualification d'une société se déduit
+    # des marchés auxquels elle a soumissionné : aucun registre public ne la donne autrement.
+    for cle_filtre, colonne in (("secteur", "secteur"), ("qualification", "qualification"),
+                                ("classe", "classe")):
+        if p.get(cle_filtre):
+            # Seuls les concurrents ADMIS comptent : c'est à l'examen du dossier administratif et
+            # technique que la qualification est vérifiée. Un concurrent écarté à cette étape-là
+            # ne prouve pas qu'il la détient — il prouve plutôt l'inverse.
+            where.append(f"cle IN (SELECT c.cle FROM concurrents c"
+                         f" JOIN qualifications q ON q.ref = c.ref"
+                         f" WHERE c.statut IN ('admis', 'attributaire') AND q.{colonne} = ?)")
+            params.append(p[cle_filtre])
     tris = {"participations": "participations", "gagnes": "gagnes", "montant": "montant",
             "nom": "nom", "acheteurs": "acheteurs"}
     colonne = tris.get(p.get("tri", "participations"), "participations")
@@ -586,14 +658,20 @@ def api_societe(cle: str, request: Request, session: dict = Depends(visiteur)):
     total = lire(f"SELECT COUNT(*) n FROM concurrents c JOIN marches m ON m.ref = c.ref"
                  f" WHERE c.cle = ? AND m.principale = 1 AND {fm}", (cle, *pm))[0]["n"]
     lignes = lire(f"""SELECT m.ref, m.reference, m.acheteur, m.objet, m.attributaire, m.montant,
-                      m.date_ouverture, m.prix_reference, c.montant_acte, c.montant_verifie,
+                      m.date_ouverture, m.estimation, m.prix_reference, c.montant_acte, c.montant_verifie,
                       c.statut statut_concurrent, c.ecart
                       FROM concurrents c JOIN marches m ON m.ref = c.ref
                       WHERE c.cle = ? AND m.principale = 1 AND {fm}
                       ORDER BY m.tri_date DESC, m.ref, c.rowid LIMIT ? OFFSET ?""",
                   (cle, *pm, taille, (page - 1) * taille))
     s["liste"] = {"total": total, "page": page, "taille": taille, "lignes": lignes, "annee": s["annee"]}
-    # Positionnement habituel de la société par rapport au prix de référence du maître d'ouvrage
+    # Profil de qualification : ce que la société a déjà eu le droit de viser, lu dans ses marchés.
+    s["qualifications"] = lire("""SELECT q.secteur, q.domaine, q.qualification, q.classe, COUNT(*) n
+                                  FROM concurrents c JOIN qualifications q ON q.ref = c.ref
+                                  WHERE c.cle = ? AND c.statut IN ('admis', 'attributaire')
+                                  GROUP BY q.secteur, q.domaine, q.qualification, q.classe
+                                  ORDER BY n DESC, q.classe DESC LIMIT 40""", (cle,))
+    # Positionnement habituel de la société par rapport à l'estimation du maître d'ouvrage
     s["ecart_moyen"] = lire(f"SELECT ROUND(AVG(c.ecart), 2) e FROM concurrents c"
                             f" JOIN marches m ON m.ref = c.ref"
                             f" WHERE c.cle = ? AND c.ecart IS NOT NULL AND m.principale = 1 AND {fm}",
@@ -666,6 +744,24 @@ def api_acheteur(request: Request, session: dict = Depends(visiteur)):
     noter(request, session, "fiche acheteur", nom[:80] + (f" [année {annee}]" if fy else "")
           + (f" (page {page})" if page > 1 else ""), total, debut)
     return a
+
+
+@app.get("/api/qualifications")
+def api_qualifications(request: Request, session: dict = Depends(visiteur)):
+    """De quoi remplir les trois menus : secteurs, qualifications et classes réellement présents."""
+    debut = time.time()
+    out = {
+        "secteurs": lire("SELECT secteur valeur, COUNT(DISTINCT ref) marches FROM qualifications"
+                         " WHERE secteur IS NOT NULL AND secteur <> '' GROUP BY secteur"
+                         " ORDER BY marches DESC"),
+        "qualifications": lire("SELECT qualification valeur, secteur, COUNT(DISTINCT ref) marches"
+                               " FROM qualifications WHERE qualification IS NOT NULL AND qualification <> ''"
+                               " GROUP BY qualification ORDER BY marches DESC LIMIT 400"),
+        "classes": lire("SELECT classe valeur, COUNT(DISTINCT ref) marches FROM qualifications"
+                        " WHERE classe IS NOT NULL AND classe <> '' GROUP BY classe ORDER BY classe"),
+    }
+    noter(request, session, "qualifications", "", len(out["qualifications"]), debut)
+    return out
 
 
 @app.get("/api/qualite")

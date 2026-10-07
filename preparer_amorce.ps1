@@ -1,4 +1,4 @@
-# Fabrique l'archive JSON que le pod Railway dépliera sur son volume au premier démarrage.
+﻿# Fabrique l'archive JSON que le pod Railway dépliera sur son volume au premier démarrage.
 #
 # Le pod ne peut pas reconstruire la base sans les extraits de PV déjà collectés, et les
 # retélécharger prendrait plus d'une journée. Ils voyagent donc une fois dans le dépôt, puis

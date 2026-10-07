@@ -9,7 +9,9 @@ COPY *.py ./
 COPY statique ./statique
 # La base d'amorçage voyage compressée. Une fois le volume rempli, c'est lui qui fait foi :
 # AMORCE_SEULEMENT empêche un déploiement de code de faire revenir la base en arrière.
-COPY pv.db.gz ./pv.db.gz
+# *.gz : la base d'amorçage ET amorce.tar.gz, les JSON déjà collectés que le pod ne peut
+# pas retélécharger (plus d'une journée de requêtes). Sans eux, aucune reconstruction.
+COPY *.gz ./
 
 ENV PORT=8000
 ENV DONNEES=/data

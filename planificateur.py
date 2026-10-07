@@ -84,11 +84,15 @@ def amorcer_donnees() -> None:
     le volume prend le relais — c'est lui qui s'enrichit ensuite, jour après jour.
     """
     archive = ICI / "amorce.tar.gz"
-    if (DONNEES / "extraits").is_dir():
+    # parametres.json est le bon témoin : il n'existe que si le dossier a vraiment été collecté.
+    # Un dossier extraits\ créé mais vide ferait croire à tort que le volume est amorcé.
+    if (DONNEES / "consultations" / "parametres.json").exists():
         return
     if not archive.exists():
-        dire(f"{DONNEES}/extraits est vide et {archive.name} est absent du dépôt :")
-        dire("la mise à jour ne pourra rien reconstruire. Voir preparer_amorce.ps1.")
+        dire(f"RIEN À RECONSTRUIRE : {DONNEES} est vide et {archive.name} n'est pas dans l'image.")
+        dire("Le site sert la base déployée, mais la mise à jour quotidienne ne peut pas tourner.")
+        dire("Sur le PC : preparer_amorce.ps1, puis git add amorce.tar.gz et vérifie que le")
+        dire("Dockerfile contient bien « COPY *.gz ./ » et non le seul nom de la base.")
         return
     import tarfile
     dire(f"premier démarrage : dépliage de {archive.name} "
@@ -97,7 +101,10 @@ def amorcer_donnees() -> None:
     try:
         DONNEES.mkdir(parents=True, exist_ok=True)
         with tarfile.open(archive, "r:gz") as t:
-            t.extractall(DONNEES)                    # noqa: S202 — archive produite par nous
+            # filter="data" refuse les chemins absolus et les liens qui sortiraient du volume.
+            # C'est le comportement que Python imposera de toute façon, et il supprime
+            # l'avertissement vu au premier démarrage.
+            t.extractall(DONNEES, filter="data")
     except (OSError, tarfile.TarError) as e:
         dire(f"dépliage impossible : {e}")
         return

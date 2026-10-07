@@ -24,8 +24,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sqlite3
 import sys
@@ -33,6 +35,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
+from html import unescape
 from pathlib import Path
 
 ICI = Path(__file__).resolve().parent
@@ -102,6 +105,16 @@ def installer_chemins(base: str | None) -> None:
              f"valeur par défaut — pas de parametres.json")
 
 
+# Le portail renvoie la ligne de résultat avec des bouts de balises collés dedans : sans
+# nettoyage, le journal se remplit de « class=""> AOO ... » et devient illisible.
+RESTE_HTML = re.compile(r'\w+\s*=\s*"[^"]*"|<[^>]*>|[<>]')
+
+
+def resumer(texte: str, longueur: int = 95) -> str:
+    propre = re.sub(r"\s+", " ", unescape(RESTE_HTML.sub(" ", texte or ""))).strip(" .-")
+    return propre[:longueur]
+
+
 def consultations_recentes(jours: int) -> int:
     """Cherche les consultations publiées dans les N derniers jours et ajoute les inconnues.
 
@@ -144,7 +157,7 @@ def consultations_recentes(jours: int) -> int:
             for l in nouvelles:
                 ecrire.writerow([l["ref"], l["org"], l["texte"]])
         for l in nouvelles[:40]:
-            dire(f"  NOUVELLE CONSULTATION {l['ref']} ({l['org']}) {l['texte'][:90]}")
+            dire(f"  NOUVELLE CONSULTATION {l['ref']} ({l['org']}) {resumer(l['texte'])}")
         if len(nouvelles) > 40:
             dire(f"  … et {len(nouvelles) - 40} autres")
     dire(f"{len(nouvelles)} nouvelle(s) consultation(s)")
@@ -153,14 +166,24 @@ def consultations_recentes(jours: int) -> int:
 
 # --------------------------------------------------------------- 2. les fiches
 
-def fiches_manquantes(fils: int) -> int:
-    """Estimation, caution, qualification et classe des consultations dont la fiche manque."""
+def fiches_manquantes(fils: int, plafond: int) -> int:
+    """Estimation, caution, qualification et classe des consultations dont la fiche manque.
+
+    Le dossier Services arrive avec un retard important : il a été collecté par un chemin plus
+    ancien, et vingt mille consultations n'ont jamais eu de fiche. Les lire d'un seul trait
+    prendrait une nuit entière. On les prend donc par paquets, les plus récentes d'abord — ce
+    sont elles qui comptent — et le retard se comble sur quelques nuits.
+    """
     dossier = cc.SORTIE / "estimations"
     dossier.mkdir(parents=True, exist_ok=True)
     toutes = cc.consultations_listees()
     deja = {p.stem for p in dossier.glob("*.json")}
-    reste = [c for c in toutes if c["ref"] not in deja]
+    reste = [c for c in toutes if c["ref"] not in deja][::-1]   # les dernières listées d'abord
     dire(f"{len(reste)} fiche(s) de consultation à lire")
+    if plafond and len(reste) > plafond:
+        dire(f"plafond de {plafond} : les {len(reste) - plafond} autres seront lues "
+             f"les nuits suivantes")
+        reste = reste[:plafond]
     if not reste:
         return 0
 
@@ -194,17 +217,29 @@ def fiches_manquantes(fils: int) -> int:
 
 # -------------------------------------------------------------- 3. les extraits
 
-def a_tenter(relance: int, essais_max: int) -> list[dict]:
+def jour_de(reference: str, relance: int) -> int:
+    """Le jour du cycle où cette consultation est revue — toujours le même pour elle.
+
+    Sans cela, toutes les consultations collectées le même jour redeviendraient « à retenter »
+    le même soir : dix-neuf mille requêtes d'un coup, sept heures de collecte. En répartissant
+    chacune sur un jour fixe du cycle, le portail voit une fraction régulière chaque nuit.
+    """
+    return int(hashlib.md5(reference.encode("utf-8")).hexdigest()[:8], 16) % relance
+
+
+def a_tenter(relance: int, essais_max: int, plafond: int) -> list[dict]:
     """Les extraits de PV qu'il vaut la peine d'aller voir aujourd'hui.
 
-    Trois cas. Jamais interrogé : on y va. Déjà interrogé et le PV y était : plus jamais, il ne
-    changera pas. Déjà interrogé et le PV n'y était pas encore : on y retourne, mais au plus une
-    fois tous les `relance` jours, et on abandonne après `essais_max` tentatives — passé trois
-    mois sans PV, une consultation n'en aura jamais.
+    Trois cas. Jamais interrogé : on y va, c'est ce qui apporte les nouveaux marchés. Déjà
+    interrogé et le PV y était : plus jamais, il ne changera pas. Déjà interrogé et le PV n'y
+    était pas encore : on y retourne une fois tous les `relance` jours — mais le jour qui lui
+    est propre — et on abandonne après `essais_max` tentatives, car passé trois mois sans PV
+    une consultation n'en aura jamais.
     """
     ce.SORTIE.mkdir(parents=True, exist_ok=True)
-    limite = time.time() - relance * 86400
-    jamais, repris, clos = [], [], 0
+    aujourdhui = date.today().toordinal() % relance
+    recent = time.time() - 20 * 3600          # relancer deux fois le même jour ne sert à rien
+    jamais, repris, clos, attendent = [], [], 0, 0
     for m in ce.marches():
         fichier = ce.SORTIE / f"{ce.nom_fichier(m)}.json"
         if not fichier.exists():
@@ -220,16 +255,25 @@ def a_tenter(relance: int, essais_max: int) -> list[dict]:
         if d.get("essais", 1) >= essais_max:
             clos += 1
             continue
-        if fichier.stat().st_mtime > limite:
-            continue                                        # déjà regardé cette semaine
+        if jour_de(m["consultation"], relance) != aujourdhui or fichier.stat().st_mtime > recent:
+            attendent += 1
+            continue
         repris.append(m)
-    dire(f"extraits : {len(jamais)} jamais interrogé(s), {len(repris)} à retenter, "
+
+    # Les jamais interrogées passent devant : ce sont elles qui peuvent livrer un PV inédit.
+    lot = jamais + repris
+    coupe = len(lot) - plafond if plafond and len(lot) > plafond else 0
+    dire(f"extraits : {len(jamais)} jamais interrogé(s), {len(repris)} à retenter aujourd'hui "
+         f"(sur {len(repris) + attendent} en attente, répartis sur {relance} jours), "
          f"{clos} abandonné(s) après {essais_max} tentatives")
-    return jamais + repris
+    if coupe:
+        dire(f"plafond de {plafond} requêtes : {coupe} relance(s) reportée(s) à demain")
+        lot = lot[:plafond]
+    return lot
 
 
-def extraits(relance: int, essais_max: int, fils: int) -> int:
-    reste = a_tenter(relance, essais_max)
+def extraits(relance: int, essais_max: int, fils: int, plafond: int) -> int:
+    reste = a_tenter(relance, essais_max, plafond)
     if not reste:
         return 0
 
@@ -327,6 +371,16 @@ def reconstruire(base: str | None, seuil: str | None) -> int:
         return -1
 
     apres = refs_en_base(neuve)
+    # Une base qui rétrécit veut dire qu'une source a disparu — le dossier resultats\ de l'OCR
+    # absent du volume, par exemple. Reconstruire dans ce cas effacerait des marchés acquis.
+    if avant and len(apres) < len(avant) * 0.98:
+        dire(f"REFUS : la base reconstruite ne contient que {len(apres)} marchés "
+             f"contre {len(avant)} en place.")
+        dire("Une source manque (OCR ou extraits). La base en place n'est pas remplacée.")
+        neuve.unlink(missing_ok=True)
+        Path(str(neuve) + ".gz").unlink(missing_ok=True)
+        return -1
+
     for suffixe in ("", "-wal", "-shm"):
         Path(str(cible) + suffixe).unlink(missing_ok=True)
     os.replace(neuve, cible)
@@ -344,12 +398,16 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", metavar="NOM", help="travaux pour pv_travaux.db ; rien pour pv.db")
-    ap.add_argument("--jours", type=int, default=45, metavar="N",
-                    help="fenêtre de recherche des nouvelles consultations (défaut 45)")
+    ap.add_argument("--jours", type=int, default=30, metavar="N",
+                    help="fenêtre de recherche des nouvelles consultations (défaut 30)")
     ap.add_argument("--relance", type=int, default=7, metavar="N",
                     help="jours avant de retenter un PV encore absent (défaut 7)")
     ap.add_argument("--essais", type=int, default=12, metavar="N",
                     help="tentatives avant d'abandonner une consultation sans PV (défaut 12)")
+    ap.add_argument("--plafond", type=int, default=4000, metavar="N",
+                    help="requêtes d'extraits au plus par passage (défaut 4000 ; 0 = sans limite)")
+    ap.add_argument("--plafond-fiches", type=int, default=3000, metavar="N",
+                    help="fiches de consultation au plus par passage (défaut 3000 ; 0 = sans limite)")
     ap.add_argument("--fils", type=int, default=3, metavar="N", help="requêtes en parallèle")
     ap.add_argument("--seuil", metavar="N", help="passé tel quel à construire_base.py")
     ap.add_argument("--sonde", action="store_true", help="teste le portail et s'arrête")
@@ -370,8 +428,8 @@ def main() -> None:
             sys.exit(1)
         try:
             nouvelles = consultations_recentes(a.jours)
-            fiches_manquantes(a.fils)
-            pv = extraits(a.relance, a.essais, a.fils)
+            fiches_manquantes(a.fils, a.plafond_fiches)
+            pv = extraits(a.relance, a.essais, a.fils, a.plafond)
         except Exception as e:                               # noqa: BLE001
             dire(f"collecte interrompue — {type(e).__name__}: {e}")
             dire("on reconstruit quand même avec ce qui a été récolté")

@@ -17,7 +17,7 @@ affichés, et la fiche en surimpression est trop étroite.
    Sa logique de fusion (portail vs OCR) est le cœur du produit et a coûté des jours de mise au point.
 2. **La formule du prix de référence ne change pas** : `(moyenne des offres + estimation) / 2`.
    C'est la formule du ministère. Aucune « amélioration » n'est acceptable.
-3. **L'accès reste : nom seul** (plus un code si `CODE_ACCES` est défini), et le suivi des visiteurs
+3. **L'accès reste : nom seul**, et le suivi des visiteurs
    dans `journal.db` continue de fonctionner à l'identique, sans que le visiteur en soit informé.
 4. **Pas de framework, pas de build, pas de dépendance nouvelle.** L'interface est un seul fichier
    `statique/dashboard.html` (99 Ko, HTML + CSS + JS natif). Elle doit le rester : Railway sert ce

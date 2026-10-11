@@ -48,7 +48,6 @@ page d'administration qui montre qui consulte quoi.
         SECRET             une longue chaîne au hasard (change-la et tout le monde est déconnecté)
         ADMIN_MOTDEPASSE   ton mot de passe pour /admin
         ADMIN_UTILISATEUR  facultatif, "admin" par défaut
-        CODE_ACCES         facultatif : un code commun demandé en plus du nom
         MENTION_SUIVI      "0" pour retirer la phrase d'information sur l'enregistrement
    d) Settings -> Networking -> Generate Domain : tu obtiens une adresse en .up.railway.app,
       en HTTPS. Tu peux brancher ton propre nom de domaine au même endroit.

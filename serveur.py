@@ -7,7 +7,6 @@ Variables d'environnement (à définir sur Railway) :
     SECRET              clé de signature des cookies (obligatoire en production)
     ADMIN_UTILISATEUR   identifiant de la page d'administration (défaut : admin)
     ADMIN_MOTDEPASSE    mot de passe de la page d'administration (obligatoire)
-    CODE_ACCES          code commun demandé aux visiteurs en plus du nom (facultatif)
     BASE                chemin de la base SQLite (défaut : /data/pv.db, sinon pv.db à côté du script)
     MENTION_SUIVI       "0" pour retirer la phrase d'information sur l'enregistrement des consultations
 
@@ -131,7 +130,6 @@ JOURNAL_BASE = Path(os.environ.get("JOURNAL") or
 SECRET = (os.environ.get("SECRET") or secrets.token_hex(32)).encode()
 ADMIN_UTILISATEUR = os.environ.get("ADMIN_UTILISATEUR", "admin")
 ADMIN_MOTDEPASSE = os.environ.get("ADMIN_MOTDEPASSE", "")
-CODE_ACCES = os.environ.get("CODE_ACCES", "")
 MENTION_SUIVI = os.environ.get("MENTION_SUIVI", "1") != "0"
 DUREE_SESSION = 12 * 3600
 PAR_PAGE_MAX = 100
@@ -168,7 +166,6 @@ print(f"[pv] base : {BASE}" + (f"\n[pv] ATTENTION — {PROBLEME}" if PROBLEME el
 print(f"[pv] administration : " + (f"activée (identifiant « {ADMIN_UTILISATEUR} »)" if ADMIN_MOTDEPASSE
       else "DÉSACTIVÉE — définis ADMIN_MOTDEPASSE avant de lancer le serveur, sinon /admin refusera tout"),
       flush=True)
-print(f"[pv] code d'accès visiteurs : " + ("demandé" if CODE_ACCES else "aucun (le nom suffit)"), flush=True)
 print(f"[pv] limites : {LIMITE_MINUTE} requêtes/minute et {LIMITE_JOUR}/jour, par nom et par adresse IP",
       flush=True)
 
@@ -389,7 +386,6 @@ PAGE_ACCUEIL = """<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
   {erreur}
   <label for="nom">Votre nom</label>
   <input id="nom" name="nom" required autofocus autocomplete="off" maxlength="60" placeholder="Nom et prénom">
-  {code}
   <button type="submit">Entrer</button>
   {mention}
 </form></body></html>"""
@@ -402,22 +398,17 @@ def accueil(request: Request, erreur: str = ""):
                             f"Le site ne peut pas démarrer.\n\n{PROBLEME}</pre>", 503)
     if verifier(request.cookies.get("pv")):
         return RedirectResponse("/app", 302)
-    champ_code = ('<label for="code">Code d\'accès</label>'
-                  '<input id="code" name="code" required autocomplete="off" maxlength="40">') if CODE_ACCES else ""
     mention = ('<p class="mention">Les consultations effectuées sur ce service sont enregistrées.</p>'
                if MENTION_SUIVI else "")
     return PAGE_ACCUEIL.format(erreur=f'<p class="erreur">{erreur}</p>' if erreur else "",
-                               code=champ_code, mention=mention)
+                               mention=mention)
 
 
 @app.post("/entrer")
-def entrer(request: Request, nom: str = Form(...), code: str = Form("")):
+def entrer(request: Request, nom: str = Form(...)):
     nom = re.sub(r"\s+", " ", nom).strip()[:60]
     if len(nom) < 2:
         return RedirectResponse("/?erreur=Merci+d%27indiquer+votre+nom.", 302)
-    if CODE_ACCES and not hmac.compare_digest(code.strip(), CODE_ACCES):
-        noter(request, {"n": nom}, "code refusé", code[:20])
-        return RedirectResponse("/?erreur=Code+d%27acc%C3%A8s+incorrect.", 302)
     session = {"n": nom, "t": time.time(), "s": secrets.token_hex(8)}
     maintenant = datetime.now(timezone.utc).isoformat(timespec="seconds")
     ecrire("INSERT INTO visiteurs (nom, premiere_visite, derniere_visite, visites, requetes) VALUES (?,?,?,1,0)"

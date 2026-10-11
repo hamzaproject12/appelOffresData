@@ -515,6 +515,7 @@
   .offre { border-bottom: 1px solid var(--bord); }
   .offre:last-child { border-bottom: 0; }
   .offre__nom { display: flex; gap: 6px; align-items: flex-start; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+  .offre__rang { flex: none; min-width: 1.6em; color: var(--doux); font-weight: 600; font-variant-numeric: tabular-nums; }
   .offre__nom svg { color: var(--vert); margin-top: 1px; }
   .offre__statut .puce { white-space: normal; }
   .offre__montant { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
@@ -1431,14 +1432,14 @@ function rendreMarche(m) {
       `${nb(m.versions)} annonces <span class="doux">— voir plus bas</span>`]] : []),
     ['Source', m.lien ? `<a href="${esc(m.lien)}" target="_blank" rel="noopener">Ouvrir le PV ${ic('externe', 14)}<span class="sr"> (nouvel onglet)</span></a>` : '—'],
   ];
-  const offre = c => {
+  const offre = (c, rang) => {
     const mt = montantOffre(c), gagne = c.statut === 'attributaire', ecarte = (c.statut || '').startsWith('ecarte');
     const ecart = mt != null && m.montant && !gagne ? (mt - m.montant) / m.montant * 100 : null;
     const ecartRef = c.ecart;                 // écart avec l'estimation, calculé à la construction de la base
     const w = mt != null && max ? Math.max(1, mt / max * 100) : 0;
     const moi = suivie != null && c.cle === suivie;
     return `<li class="offre ${gagne ? 'est-gagnant' : ''} ${ecarte ? 'est-ecarte' : ''} ${moi ? 'est-suivie' : ''}">
-      <div class="offre__nom">${gagne ? ic('coupe', 18) : ''}<span>${c.cle ? aFiche('s:' + c.cle, esc(c.nom), 'lien-discret') : esc(c.nom)}${
+      <div class="offre__nom"><span class="offre__rang" aria-label="Rang ${rang + 1}">${rang + 1}</span>${gagne ? ic('coupe', 18) : ''}<span>${c.cle ? aFiche('s:' + c.cle, esc(c.nom), 'lien-discret') : esc(c.nom)}${
         c.lots ? ` <span class="doux">· lot ${esc(c.lots)}</span>` : ''}${
         moi ? ' <span class="puce puce--suivie">Société consultée</span>' : ''}</span></div>
       <div class="offre__statut">${puceConc(c.statut)}</div>
@@ -1517,7 +1518,7 @@ function rendreMarche(m) {
         <p>${nb(conc.length)} concurrent${conc.length > 1 ? 's' : ''}${montants.length ? ` · offres de ${dh(min)} à ${dh(max)} DH` : ''}</p></div>
       ${conc.length ? `<div class="cadre cadre--fixe offres-cadre">
         <div class="offres__entete" aria-hidden="true"><span>Concurrent</span><span>Résultat</span><span>Offre (proportion)</span><span class="num">Montant (DH)</span><span class="num" title="Écart par rapport à l'estimation du maître d'ouvrage">Écart / estim.</span></div>
-        <ol class="offres">${tries.map(offre).join('')}</ol></div>
+        <ol class="offres">${tries.map((c, i) => offre(c, i)).join('')}</ol></div>
         <p class="section__pied">Classement final : en premier l'offre la plus proche du prix de référence par en dessous, puis les suivantes en dessous, puis celles au-dessus du prix de référence, de la plus proche à la plus éloignée${
           m.prix_reference == null ? " (prix de référence non calculable ici : classement par montant croissant)" : ''}. Barres proportionnelles au montant de l'offre (après vérification si disponible, sinon acte d'engagement). Écart calculé par rapport à l'estimation du maître d'ouvrage${
           m.estimation == null ? ", ou au montant attribué quand l'estimation n'est pas connue" : ''} — le prix de référence, lui, sert à classer les concurrents, pas à mesurer l'écart.</p>`
